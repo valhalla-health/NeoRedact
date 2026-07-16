@@ -74,6 +74,40 @@ main {
 .step { display: none; flex-direction: column; gap: 14px; }
 .step.active { display: flex; }
 
+#step-login.active { flex: 1; justify-content: center; }
+
+.login-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  text-align: center;
+}
+.login-center > .hint { max-width: 340px; }
+.login-center > #googleSignInContainer { display: flex; justify-content: center; }
+.login-center > #passwordLoginForm,
+.login-center > #btnSkipLogin,
+.login-center > #loginError { width: 100%; max-width: 320px; }
+
+.link-btn {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--ink-dim);
+  font-family: inherit;
+  font-size: 14px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px;
+}
+.link-btn:hover { color: var(--ink); }
+
+.text-center { text-align: center; }
+.text-center .hint { text-align: center; }
+
+#doneCard { margin-top: 18px; }
+
 .card {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -165,6 +199,13 @@ canvas#overlayCanvas {
   font-family: inherit;
   font-size: 14px;
   outline: none;
+}
+
+.region-row .region-static-label {
+  flex: 1;
+  font-size: 14px;
+  color: var(--ink-dim);
+  font-style: italic;
 }
 
 .region-row .redact-toggle {

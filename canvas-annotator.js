@@ -58,7 +58,7 @@ window.NeoRedact = window.NeoRedact || {};
         const color = r.redact ? '#e0605a' : '#4fb3a9';
         ctx.strokeStyle = color;
         ctx.strokeRect(r.x, r.y, r.w, r.h);
-        const text = (r.label || '(unlabeled)') + (r.redact ? ' · REDACT' : '');
+        const text = r.redact ? 'ปิดทึบ' : (r.label || '(unlabeled)');
         const textWidth = ctx.measureText(text).width;
         ctx.fillStyle = color;
         ctx.fillRect(r.x, Math.max(0, r.y - 22), textWidth + 10, 20);
@@ -101,7 +101,7 @@ window.NeoRedact = window.NeoRedact || {};
         regions.push({
           id: nextId++,
           x: rect.x, y: rect.y, w: rect.w, h: rect.h,
-          label: regions.length === 0 ? 'name' : '',
+          label: '',
           redact: regions.length === 0,
         });
         onChange(getRegions());

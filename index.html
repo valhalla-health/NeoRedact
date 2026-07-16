@@ -39,23 +39,21 @@
 
     <!-- Step 0: Login -->
     <section class="step active" id="step-login">
-      <div class="card">
-        <p class="hint">เข้าสู่ระบบเพื่อส่งรูปที่ปิดชื่อแล้วไปยัง NICU Sheet การปิดชื่อและ OCR ยังใช้งานได้แม้ไม่เข้าสู่ระบบ — การเข้าสู่ระบบจำเป็นเฉพาะตอน sync เท่านั้น</p>
-      </div>
-      <div class="card">
+      <div class="login-center">
+        <p class="hint">เข้าสู่ระบบเพื่อส่งรูปที่ปิดชื่อแล้วไปยัง NICU Sheet — การปิดชื่อและ OCR ยังใช้งานได้แม้ไม่เข้าสู่ระบบ การเข้าสู่ระบบจำเป็นเฉพาะตอน sync เท่านั้น</p>
         <div id="googleSignInContainer"></div>
-      </div>
-      <button class="btn btn-secondary btn-block" id="btnTogglePasswordForm">ใช้อีเมลและรหัสผ่านแทน</button>
-      <div id="passwordLoginForm" style="display:none;">
-        <div class="card" style="display:flex; flex-direction:column; gap:10px;">
-          <input type="email" id="loginEmail" placeholder="อีเมล" autocomplete="username" />
-          <input type="password" id="loginPassword" placeholder="รหัสผ่าน" autocomplete="current-password" />
+        <button class="link-btn" id="btnTogglePasswordForm">ใช้อีเมลและรหัสผ่านแทน →</button>
+        <div id="passwordLoginForm" style="display:none;">
+          <div class="card" style="display:flex; flex-direction:column; gap:10px;">
+            <input type="email" id="loginEmail" placeholder="อีเมล" autocomplete="username" />
+            <input type="password" id="loginPassword" placeholder="รหัสผ่าน" autocomplete="current-password" />
+          </div>
+          <button class="btn btn-primary btn-block" id="btnPasswordLogin">เข้าสู่ระบบ</button>
+          <button class="btn btn-secondary btn-block" id="btnBackToGoogle">ย้อนกลับ</button>
         </div>
-        <button class="btn btn-primary btn-block" id="btnPasswordLogin">เข้าสู่ระบบ</button>
-        <button class="btn btn-secondary btn-block" id="btnBackToGoogle">ย้อนกลับ</button>
+        <p class="badge-danger" id="loginError" style="display:none;"></p>
+        <button class="btn btn-secondary btn-block" id="btnSkipLogin">ข้ามไปก่อน (ปิดชื่อ/OCR เท่านั้น ไม่ sync)</button>
       </div>
-      <p class="badge-danger" id="loginError" style="display:none;"></p>
-      <button class="btn btn-secondary btn-block" id="btnSkipLogin">ข้ามไปก่อน (ปิดชื่อ/OCR เท่านั้น ไม่ sync)</button>
     </section>
 
     <!-- Step 1: Capture -->
@@ -84,6 +82,7 @@
       <input type="file" id="fileInputGallery" accept="image/*" />
       <button class="btn btn-primary btn-block" id="btnTakePhoto">ถ่ายรูป</button>
       <button class="btn btn-secondary btn-block" id="btnChooseGallery">เลือกจากคลังภาพ</button>
+      <button class="btn btn-secondary btn-block" id="btnBackToLoginFromCapture">ย้อนกลับ</button>
     </section>
 
     <!-- Step 2: Annotate -->
@@ -93,8 +92,8 @@
         <canvas id="overlayCanvas"></canvas>
       </div>
       <p class="hint">
-        ลากกรอบทับชื่อผู้ป่วยก่อน — ระบบจะตั้งเป็น <b>ปิดชื่อ</b> โดยอัตโนมัติและปิดถาวร
-        วาดกรอบเพิ่มสำหรับข้อมูลที่ต้องการอ่าน (HN, DOB, น้ำหนัก, ward…) แล้วพิมพ์ชื่อกำกับแต่ละกรอบ
+        กรอบแรกที่ลาก ระบบจะตั้งเป็น <b>ปิดทึบ</b> โดยอัตโนมัติและปิดถาวร — ใช้ลากทับข้อมูลที่ต้องปิด (เช่น ชื่อผู้ป่วย)
+        ไม่ต้องตั้งชื่อกำกับ วาดกรอบเพิ่มสำหรับข้อมูลที่ต้องการอ่าน (HN, DOB, น้ำหนัก, ward…) แล้วพิมพ์ชื่อกำกับเฉพาะกรอบเหล่านั้น
         — วาดได้หลายกรอบต่อหนึ่งรูป
       </p>
       <div class="region-list" id="regionList"></div>
@@ -121,9 +120,10 @@
       </div>
       <div class="region-list" id="resultList"></div>
       <div class="btn-row">
-        <button class="btn btn-secondary" id="btnStartOver">เริ่มใหม่</button>
+        <button class="btn btn-secondary" id="btnBackToAnnotate">ย้อนกลับ</button>
         <button class="btn btn-primary" id="btnGoExport">ส่งออก</button>
       </div>
+      <button class="btn btn-secondary btn-block" id="btnStartOver">เริ่มใหม่ (ทิ้งรูปนี้)</button>
     </section>
 
     <!-- Step 5: Codename -->
@@ -143,26 +143,27 @@
 
     <!-- Step 6: Export -->
     <section class="step" id="step-export">
+      <button class="btn btn-secondary btn-block" id="btnBackToCodenameFromExport">ย้อนกลับ</button>
       <div class="card" id="syncCard">
         <p class="hint" id="syncHint">ส่งรูปที่ปิดชื่อแล้วและข้อมูลไปยัง NICU Sheet</p>
         <button class="btn btn-primary btn-block" id="btnSync">Sync ไปยัง NICU Sheet</button>
         <button class="btn btn-secondary btn-block" id="btnLoginToSync" style="display:none;">เข้าสู่ระบบเพื่อ sync</button>
         <p class="progress-line" id="syncStatusLine" style="display:none;"></p>
       </div>
-      <div class="card">
-        <p class="hint">หรือบันทึกไว้ในเครื่องแทน — ไฟล์จะถูกดาวน์โหลดลงเครื่องนี้โดยตรง ไม่มีการอัปโหลดใดๆ</p>
+      <div class="card text-center">
+        <p class="hint">หรือบันทึกรูปที่ปิดชื่อแล้วไว้ในเครื่องแทน — ไฟล์จะถูกดาวน์โหลดลงเครื่องนี้โดยตรง ไม่มีการอัปโหลดใดๆ</p>
+        <button class="btn btn-secondary btn-block" id="btnExportPng">ดาวน์โหลดรูปที่ปิดชื่อแล้ว (.png)</button>
       </div>
-      <button class="btn btn-secondary btn-block" id="btnExportTxt">ดาวน์โหลด .txt</button>
-      <button class="btn btn-secondary btn-block" id="btnExportJson">ดาวน์โหลด .json</button>
-      <button class="btn btn-secondary btn-block" id="btnExportPng">ดาวน์โหลดรูปที่ปิดชื่อแล้ว (.png)</button>
-      <button class="btn btn-secondary btn-block" id="btnDone">เสร็จสิ้น — เริ่มผู้ป่วยรายถัดไป</button>
+      <div class="card text-center" id="doneCard">
+        <p class="hint">เสร็จสิ้นรายการนี้แล้ว?</p>
+        <button class="btn btn-primary btn-block" id="btnDone">เสร็จสิ้น — เริ่มผู้ป่วยรายถัดไป</button>
+      </div>
     </section>
 
   </main>
 
-  <footer class="bottombar">
-    <p class="hint" id="footerHint">NeoRedact ไม่ส่งรูปหรือชื่อผู้ป่วยออกไปที่ใดเลย</p>
-    <button class="btn btn-secondary btn-block" id="btnLogout" style="display:none; margin-top:8px;">ออกจากระบบ</button>
+  <footer class="bottombar" style="display:none;">
+    <button class="btn btn-secondary btn-block" id="btnLogout">ออกจากระบบ</button>
   </footer>
 </div>
 

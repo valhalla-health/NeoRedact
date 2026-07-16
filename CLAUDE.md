@@ -20,11 +20,11 @@ is — only a codename. Praew keeps her own private mapping (codename + date -> 
 HN/AN/name) on her desktop, entirely outside this system; date is what disambiguates a
 reused codename on her side, this app never tracks that.
 
-- **Codename pool**: fixed 26 values, the NATO phonetic alphabet (Alpha…Zulu) — see
-  `codenames.js`. Identical list duplicated in `neoredact-sync/Code.gs`'s `CODENAMES`
-  constant; keep both in sync if this ever changes.
+- **Codename pool**: fixed 24 values, the NATO phonetic alphabet minus X-ray and Zulu
+  (Alpha…Yankee) — see `codenames.js`. Identical list duplicated in
+  `neoredact-sync/Code.gs`'s `CODENAMES` constant; keep both in sync if this ever changes.
 - **Wizard step**: a new "codename" step between Review and Export — nurse picks one of
-  the 26 before Sync becomes reachable. Not required for offline redact/OCR/local export,
+  the 24 before Sync becomes reachable. Not required for offline redact/OCR/local export,
   only for the Sync path (`app.js`/`index.html`).
 - **HN/DOB never reach the cloud**: `sync.js` strips any field labeled HN/DOB/name/AN
   (`IDENTIFYING_FIELD_KEYS`) before building the sync payload; `Code.gs`'s

@@ -333,7 +333,7 @@
 
   // --- Step 5: Codename ----------------------------------------------------
   // The only patient identifier that ever leaves the device — a fixed pool of
-  // 26, no real name/HN/DOB attached. See codenames.js / CLAUDE.md.
+  // 24, no real name/HN/DOB attached. See codenames.js / CLAUDE.md.
 
   function renderCodenameGrid() {
     el.codenameGrid.innerHTML = '';

@@ -5,8 +5,8 @@
   --ink: #eef1f4;
   --ink-dim: #9aa5b1;
   --border: #313a42;
-  --accent: #4fb3a9;
-  --accent-ink: #06201d;
+  --accent: #f2a3c6;
+  --accent-ink: #3d0f22;
   --danger: #e0605a;
   --danger-ink: #2a0f0d;
   --warn: #d9a441;
@@ -73,6 +73,54 @@ main {
 
 .step { display: none; flex-direction: column; gap: 14px; }
 .step.active { display: flex; }
+
+#step-login.active { flex: 1; justify-content: center; }
+
+.login-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  text-align: center;
+}
+.login-center > .hint { max-width: 340px; }
+.login-center > #googleSignInContainer { display: flex; justify-content: center; }
+.login-center > #passwordLoginForm,
+.login-center > #btnSkipLogin,
+.login-center > #loginError { width: 100%; max-width: 320px; }
+.login-center > #btnSkipLogin { margin-top: 20px; }
+
+.link-btn {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--ink-dim);
+  font-family: inherit;
+  font-size: 14px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px;
+}
+.link-btn:hover { color: var(--ink); }
+
+.skip-link {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--ink-dim);
+  font-family: inherit;
+  font-size: 12px;
+  opacity: 0.65;
+  cursor: pointer;
+  padding: 4px;
+}
+.skip-link:hover { opacity: 1; text-decoration: underline; }
+
+.text-center { text-align: center; }
+.text-center .hint { text-align: center; }
+
+#doneCard { margin-top: 18px; }
 
 .card {
   background: var(--panel);
@@ -165,6 +213,13 @@ canvas#overlayCanvas {
   font-family: inherit;
   font-size: 14px;
   outline: none;
+}
+
+.region-row .region-static-label {
+  flex: 1;
+  font-size: 14px;
+  color: var(--ink-dim);
+  font-style: italic;
 }
 
 .region-row .redact-toggle {

@@ -40,26 +40,6 @@ window.NeoRedact = window.NeoRedact || {};
     return `${codename || 'no-codename'}-${timestampSlug()}-${shortId(id)}`;
   }
 
-  // fields: [{ label, text }]
-  function exportTxt(fields, codename, id) {
-    const lines = [`Codename: ${codename || '(none)'}`, `ID: ${id || '(none)'}`, ''];
-    fields.forEach((f) => lines.push(`${f.label}: ${f.text}`));
-    const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain' });
-    triggerDownload(blob, `neoredact-${filenameSlug(codename, id)}.txt`);
-  }
-
-  function exportJson(fields, codename, id) {
-    const values = {};
-    let unlabeledCount = 0;
-    fields.forEach((f) => {
-      const key = f.label && f.label.trim() ? f.label.trim() : `field_${++unlabeledCount}`;
-      values[key] = f.text;
-    });
-    const payload = { capturedAt: new Date().toISOString(), codename: codename || '', syncId: id || '', fields: values };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    triggerDownload(blob, `neoredact-${filenameSlug(codename, id)}.json`);
-  }
-
   // Only ever called with the already-redacted working canvas — see app.js.
   function exportRedactedPng(canvas, codename, id) {
     canvas.toBlob((blob) => {
@@ -67,5 +47,5 @@ window.NeoRedact = window.NeoRedact || {};
     }, 'image/png');
   }
 
-  window.NeoRedact.exportModule = { exportTxt, exportJson, exportRedactedPng };
+  window.NeoRedact.exportModule = { exportRedactedPng };
 })();

@@ -1,8 +1,9 @@
 # NeoRedact
 
 Offline PWA: nurse photographs a patient label, blacks out the name on-device, OCRs the
-remaining labeled fields (Thai+English), exports text/JSON. Redaction and OCR are fully
-local — the raw, pre-redaction photo and the name never leave the phone, ever. The
+remaining labeled fields (Thai+English), and lets the redacted photo be downloaded locally.
+Redaction and OCR are fully local — the raw, pre-redaction photo and the name never leave
+the phone, ever. The
 already-redacted result can optionally sync to a central NICU Sheet (see "Sync" below);
 that's the only network traffic this app ever generates.
 
@@ -19,11 +20,11 @@ is — only a codename. Praew keeps her own private mapping (codename + date -> 
 HN/AN/name) on her desktop, entirely outside this system; date is what disambiguates a
 reused codename on her side, this app never tracks that.
 
-- **Codename pool**: fixed 26 values, the NATO phonetic alphabet (Alpha…Zulu) — see
-  `codenames.js`. Identical list duplicated in `neoredact-sync/Code.gs`'s `CODENAMES`
-  constant; keep both in sync if this ever changes.
+- **Codename pool**: fixed 24 values, the NATO phonetic alphabet minus X-ray and Zulu
+  (Alpha…Yankee) — see `codenames.js`. Identical list duplicated in
+  `neoredact-sync/Code.gs`'s `CODENAMES` constant; keep both in sync if this ever changes.
 - **Wizard step**: a new "codename" step between Review and Export — nurse picks one of
-  the 26 before Sync becomes reachable. Not required for offline redact/OCR/local export,
+  the 24 before Sync becomes reachable. Not required for offline redact/OCR/local export,
   only for the Sync path (`app.js`/`index.html`).
 - **HN/DOB never reach the cloud**: `sync.js` strips any field labeled HN/DOB/name/AN
   (`IDENTIFYING_FIELD_KEYS`) before building the sync payload; `Code.gs`'s
@@ -37,13 +38,16 @@ reused codename on her side, this app never tracks that.
   `auth.js`), lists submissions grouped by codename with date/ward/fields/photo link.
   Calls a new `list_dashboard` action on the same GAS backend. No patient-management
   (create/rename/discharge) — v1 is intentionally just a viewer.
-- **Local exports (`export.js`) also carry the codename** (filename + file content for
-  txt/json), plus a shared `artifactId` (`app.js`'s `state.artifactId`, generated once at
-  redact time) — the same id becomes the Sync payload's `syncId` if that same photo is
-  later synced, so a locally-downloaded file and its eventual Sheet row are
+- **Local export (`export.js`) is PNG-only** (the redacted photo) and carries the codename
+  in its filename, plus a shared `artifactId` (`app.js`'s `state.artifactId`, generated
+  once at redact time) — the same id becomes the Sync payload's `syncId` if that same
+  photo is later synced, so a locally-downloaded file and its eventual Sheet row are
   cross-referenceable. Fixed 2026-07-16 after Praew noticed exported filenames
   (`neoredact-photo-20260716-2221.png`) had no codename at all — a `/scrutinize` review
   traced it to `export.js` never having been updated when the codename step was added.
+  The separate `.txt`/`.json` download buttons were removed the same day (UI simplification
+  — the reviewed fields already reach the NICU Sheet via Sync; `exportTxt`/`exportJson`
+  were deleted from `export.js` along with them).
 - **The codename step intentionally gates both Sync and local export**, with no "skip"
   option (unlike login's explicit skip). This was scrutinized and kept as-is: codename
   selection is a pure client-side step with no network dependency, so it doesn't violate

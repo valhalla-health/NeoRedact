@@ -40,6 +40,7 @@
     fileInputGallery: document.getElementById('fileInputGallery'),
     btnTakePhoto: document.getElementById('btnTakePhoto'),
     btnChooseGallery: document.getElementById('btnChooseGallery'),
+    btnBackToLoginFromCapture: document.getElementById('btnBackToLoginFromCapture'),
     workCanvas: document.getElementById('workCanvas'),
     overlayCanvas: document.getElementById('overlayCanvas'),
     regionList: document.getElementById('regionList'),
@@ -53,17 +54,17 @@
     ocrProgressLine: document.getElementById('ocrProgressLine'),
     reviewThumb: document.getElementById('reviewThumb'),
     resultList: document.getElementById('resultList'),
+    btnBackToAnnotate: document.getElementById('btnBackToAnnotate'),
     btnStartOver: document.getElementById('btnStartOver'),
     btnGoExport: document.getElementById('btnGoExport'),
     codenameGrid: document.getElementById('codenameGrid'),
     btnBackToReview: document.getElementById('btnBackToReview'),
     btnGoExportFromCodename: document.getElementById('btnGoExportFromCodename'),
+    btnBackToCodenameFromExport: document.getElementById('btnBackToCodenameFromExport'),
     syncCard: document.getElementById('syncCard'),
     syncHint: document.getElementById('syncHint'),
     btnSync: document.getElementById('btnSync'),
     syncStatusLine: document.getElementById('syncStatusLine'),
-    btnExportTxt: document.getElementById('btnExportTxt'),
-    btnExportJson: document.getElementById('btnExportJson'),
     btnExportPng: document.getElementById('btnExportPng'),
     btnDone: document.getElementById('btnDone'),
   };
@@ -86,6 +87,7 @@
 
   function renderAuthFooter() {
     const session = NR.auth.getSession();
+    document.querySelector('footer.bottombar').style.display = session ? 'block' : 'none';
     el.btnLogout.style.display = session ? 'block' : 'none';
   }
 
@@ -156,6 +158,7 @@
 
   el.btnTakePhoto.addEventListener('click', () => el.fileInputCamera.click());
   el.btnChooseGallery.addEventListener('click', () => el.fileInputGallery.click());
+  el.btnBackToLoginFromCapture.addEventListener('click', () => showStep('login'));
 
   async function handleFileChosen(evt) {
     const file = evt.target.files && evt.target.files[0];
@@ -189,16 +192,27 @@
       const row = document.createElement('div');
       row.className = 'region-row';
 
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.placeholder = 'ชื่อข้อมูล (เช่น HN, DOB)';
-      input.value = r.label;
-      input.addEventListener('input', () => annotatorCtrl.setLabel(r.id, input.value));
+      if (r.redact) {
+        // A redact box's label is never read (redactor.js ignores it, and
+        // ocr-engine.js filters redact regions out entirely) — no need to
+        // ask the nurse to name what's being blacked out.
+        const staticLabel = document.createElement('span');
+        staticLabel.className = 'region-static-label';
+        staticLabel.textContent = 'พื้นที่ปิดทึบ — ไม่ต้องตั้งชื่อ';
+        row.appendChild(staticLabel);
+      } else {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'ชื่อข้อมูล (เช่น HN, DOB)';
+        input.value = r.label;
+        input.addEventListener('input', () => annotatorCtrl.setLabel(r.id, input.value));
+        row.appendChild(input);
+      }
 
       const toggle = document.createElement('button');
       toggle.type = 'button';
       toggle.className = 'redact-toggle' + (r.redact ? ' on' : '');
-      toggle.textContent = r.redact ? 'ปิดชื่อ' : 'อ่านค่า';
+      toggle.textContent = r.redact ? 'ปิดทึบ' : 'อ่านค่า';
       toggle.addEventListener('click', () => annotatorCtrl.toggleRedact(r.id));
 
       const remove = document.createElement('button');
@@ -207,12 +221,13 @@
       remove.textContent = '✕';
       remove.addEventListener('click', () => annotatorCtrl.removeRegion(r.id));
 
-      row.append(input, toggle, remove);
+      row.append(toggle, remove);
       el.regionList.appendChild(row);
     });
 
     const hasRedactRegion = state.regions.some((r) => r.redact);
-    const allLabeled = state.regions.length > 0 && state.regions.every((r) => r.label && r.label.trim());
+    const ocrRegions = state.regions.filter((r) => !r.redact);
+    const allLabeled = ocrRegions.every((r) => r.label && r.label.trim());
     el.btnGoRedact.disabled = !(hasRedactRegion && allLabeled);
   }
 
@@ -309,6 +324,7 @@
     });
   }
 
+  el.btnBackToAnnotate.addEventListener('click', () => showStep('annotate'));
   el.btnStartOver.addEventListener('click', resetAll);
   el.btnGoExport.addEventListener('click', () => {
     renderCodenameGrid();
@@ -317,7 +333,7 @@
 
   // --- Step 5: Codename ----------------------------------------------------
   // The only patient identifier that ever leaves the device — a fixed pool of
-  // 26, no real name/HN/DOB attached. See codenames.js / CLAUDE.md.
+  // 24, no real name/HN/DOB attached. See codenames.js / CLAUDE.md.
 
   function renderCodenameGrid() {
     el.codenameGrid.innerHTML = '';
@@ -389,8 +405,7 @@
     renderSyncUI();
   });
 
-  el.btnExportTxt.addEventListener('click', () => NR.exportModule.exportTxt(state.results, state.codename, state.artifactId));
-  el.btnExportJson.addEventListener('click', () => NR.exportModule.exportJson(state.results, state.codename, state.artifactId));
+  el.btnBackToCodenameFromExport.addEventListener('click', () => showStep('codename'));
   el.btnExportPng.addEventListener('click', () => NR.exportModule.exportRedactedPng(el.workCanvas, state.codename, state.artifactId));
   el.btnDone.addEventListener('click', resetAll);
 

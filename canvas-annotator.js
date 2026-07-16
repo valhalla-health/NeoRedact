@@ -55,7 +55,7 @@ window.NeoRedact = window.NeoRedact || {};
       ctx.textBaseline = 'top';
 
       regions.forEach((r) => {
-        const color = r.redact ? '#e0605a' : '#4fb3a9';
+        const color = r.redact ? '#e0605a' : '#f2a3c6';
         ctx.strokeStyle = color;
         ctx.strokeRect(r.x, r.y, r.w, r.h);
         const text = r.redact ? 'ปิดทึบ' : (r.label || '(unlabeled)');

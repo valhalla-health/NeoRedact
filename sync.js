@@ -35,16 +35,24 @@ window.NeoRedact = window.NeoRedact || {};
     writeQueue(readQueue().filter((p) => p.syncId !== syncId));
   }
 
+  // Field labels that would re-identify the patient if they ever reached the
+  // cloud sheet — stripped here before anything leaves the device. The
+  // backend independently re-filters the same way (defense in depth, same
+  // pattern as the redact step never trusting a single check).
+  const IDENTIFYING_FIELD_KEYS = /^(hn|dob|name|ชื่อ|an|hn\/an|admission ?number|hospital ?number)$/i;
+
   // fields: [{ label, text }] from app.js's review step
-  function buildPayload(canvas, fields, ward, sessionToken) {
+  function buildPayload(canvas, fields, ward, codename, sessionToken) {
     const fieldsObj = {};
     fields.forEach((f) => {
-      if (f.label && f.label.trim()) fieldsObj[f.label.trim()] = f.text;
+      const label = f.label && f.label.trim();
+      if (label && !IDENTIFYING_FIELD_KEYS.test(label)) fieldsObj[label] = f.text;
     });
     return {
       syncId: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()),
       capturedAt: new Date().toISOString(),
       ward: ward || '',
+      codename: codename || '',
       fields: fieldsObj,
       redactedImageBase64: canvas.toDataURL('image/jpeg', 0.85),
       token: sessionToken || '',
@@ -66,15 +74,18 @@ window.NeoRedact = window.NeoRedact || {};
   }
 
   // Returns { status: 'synced' | 'queued-offline' | 'needs-login' | 'not-configured', detail }
-  async function syncNow(canvas, fields, ward) {
+  async function syncNow(canvas, fields, ward, codename) {
     if (!isConfigured()) {
       return { status: 'not-configured' };
+    }
+    if (!codename) {
+      return { status: 'missing-codename' };
     }
     const session = window.NeoRedact.auth.getSession();
     if (!session) {
       return { status: 'needs-login' };
     }
-    const payload = buildPayload(canvas, fields, ward, session.token);
+    const payload = buildPayload(canvas, fields, ward, codename, session.token);
     try {
       const result = await postPayload(payload);
       if (isAuthError(result)) {

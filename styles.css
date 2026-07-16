@@ -87,6 +87,16 @@ main {
   line-height: 1.5;
 }
 
+.capture-guide {
+  color: var(--ink-dim);
+  text-align: center;
+}
+.capture-guide svg {
+  max-width: 260px;
+  margin: 0 auto 8px;
+  display: block;
+}
+
 .btn {
   appearance: none;
   border: none;
@@ -312,3 +322,55 @@ input[type="password"]:focus { border-color: var(--accent); }
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.codename-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.codename-btn {
+  appearance: none;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 12px 6px;
+  cursor: pointer;
+}
+
+.codename-btn.selected {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.dashboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.dashboard-table th,
+.dashboard-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dashboard-table th {
+  color: var(--ink-dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dashboard-table a { color: var(--accent); }
+
+.codename-group-header {
+  background: var(--panel-2);
+  font-weight: 700;
+}

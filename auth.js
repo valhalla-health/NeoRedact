@@ -60,17 +60,17 @@ window.NeoRedact = window.NeoRedact || {};
   // ready yet when this first runs — poll briefly rather than assume).
   function renderGoogleButton(container, onSuccess, onError) {
     if (!isConfigured()) {
-      container.textContent = 'Sync isn’t set up on this device yet.';
+      container.textContent = 'อุปกรณ์นี้ยังไม่ได้ตั้งค่า sync';
       return;
     }
     if (!NEOREDACT_CLIENT_ID) {
-      container.textContent = 'Google Sign-In not configured on this device — use email & password instead.';
+      container.textContent = 'ยังไม่ได้ตั้งค่า Google Sign-In บนอุปกรณ์นี้ — ใช้อีเมลและรหัสผ่านแทน';
       return;
     }
     let attempts = 0;
     function tryInit() {
       if (!(window.google && window.google.accounts && window.google.accounts.id)) {
-        if (++attempts > 40) { container.textContent = 'Could not load Google Sign-In — check your connection.'; return; }
+        if (++attempts > 40) { container.textContent = 'โหลด Google Sign-In ไม่สำเร็จ — ตรวจสอบการเชื่อมต่อ'; return; }
         setTimeout(tryInit, 250);
         return;
       }

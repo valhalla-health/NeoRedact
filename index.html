@@ -40,36 +40,50 @@
     <!-- Step 0: Login -->
     <section class="step active" id="step-login">
       <div class="card">
-        <p class="hint">Sign in to send redacted photos to the NICU Sheet. Redaction and OCR still work without this — signing in is only needed for sync.</p>
+        <p class="hint">เข้าสู่ระบบเพื่อส่งรูปที่ปิดชื่อแล้วไปยัง NICU Sheet การปิดชื่อและ OCR ยังใช้งานได้แม้ไม่เข้าสู่ระบบ — การเข้าสู่ระบบจำเป็นเฉพาะตอน sync เท่านั้น</p>
       </div>
       <div class="card">
         <div id="googleSignInContainer"></div>
       </div>
-      <button class="btn btn-secondary btn-block" id="btnTogglePasswordForm">Use email &amp; password instead</button>
+      <button class="btn btn-secondary btn-block" id="btnTogglePasswordForm">ใช้อีเมลและรหัสผ่านแทน</button>
       <div id="passwordLoginForm" style="display:none;">
         <div class="card" style="display:flex; flex-direction:column; gap:10px;">
-          <input type="email" id="loginEmail" placeholder="Email" autocomplete="username" />
-          <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" />
+          <input type="email" id="loginEmail" placeholder="อีเมล" autocomplete="username" />
+          <input type="password" id="loginPassword" placeholder="รหัสผ่าน" autocomplete="current-password" />
         </div>
-        <button class="btn btn-primary btn-block" id="btnPasswordLogin">Sign in</button>
-        <button class="btn btn-secondary btn-block" id="btnBackToGoogle">Back</button>
+        <button class="btn btn-primary btn-block" id="btnPasswordLogin">เข้าสู่ระบบ</button>
+        <button class="btn btn-secondary btn-block" id="btnBackToGoogle">ย้อนกลับ</button>
       </div>
       <p class="badge-danger" id="loginError" style="display:none;"></p>
-      <button class="btn btn-secondary btn-block" id="btnSkipLogin">Skip for now (redact/OCR only, no sync)</button>
+      <button class="btn btn-secondary btn-block" id="btnSkipLogin">ข้ามไปก่อน (ปิดชื่อ/OCR เท่านั้น ไม่ sync)</button>
     </section>
 
     <!-- Step 1: Capture -->
     <section class="step" id="step-capture">
       <div class="card">
         <p class="hint">
-          Take or choose a photo of the patient label. Nothing leaves this phone — the photo never
-          goes online, and after the first install this app keeps working with no internet at all.
+          ถ่ายหรือเลือกรูปป้ายชื่อผู้ป่วย รูปจะไม่ถูกส่งออกจากเครื่องนี้เลย และหลังติดตั้งครั้งแรก
+          แอปนี้ใช้งานได้แม้ไม่มีอินเทอร์เน็ต
         </p>
+      </div>
+      <div class="card capture-guide">
+        <svg viewBox="0 0 320 200" width="100%" height="auto" role="img" aria-label="ตัวอย่างการวางกรอบถ่ายรูป">
+          <rect x="4" y="4" width="312" height="192" rx="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="6 5" opacity="0.5"/>
+          <rect x="24" y="24" width="130" height="30" rx="4" fill="#e0605a" opacity="0.85"/>
+          <text x="89" y="44" text-anchor="middle" font-size="13" fill="#fff">ชื่อผู้ป่วย</text>
+          <rect x="24" y="66" width="130" height="26" rx="4" fill="#4fb3a9" opacity="0.85"/>
+          <text x="89" y="84" text-anchor="middle" font-size="12" fill="#0b0e11">HN</text>
+          <rect x="166" y="66" width="130" height="26" rx="4" fill="#4fb3a9" opacity="0.85"/>
+          <text x="231" y="84" text-anchor="middle" font-size="12" fill="#0b0e11">DOB</text>
+          <rect x="24" y="104" width="272" height="70" rx="4" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.35"/>
+          <text x="160" y="144" text-anchor="middle" font-size="12" opacity="0.6">ให้ป้ายชื่ออยู่ในกรอบ ไม่เอียง ไม่มีเงาบัง</text>
+        </svg>
+        <p class="hint">ถ่ายให้เห็นป้ายชื่อและช่องข้อมูล (HN, DOB) ชัดเจน วางกล้องตรง ให้แสงพอดี ไม่มีเงาทับตัวอักษร</p>
       </div>
       <input type="file" id="fileInputCamera" accept="image/*" capture="environment" />
       <input type="file" id="fileInputGallery" accept="image/*" />
-      <button class="btn btn-primary btn-block" id="btnTakePhoto">Take Photo</button>
-      <button class="btn btn-secondary btn-block" id="btnChooseGallery">Choose from Gallery</button>
+      <button class="btn btn-primary btn-block" id="btnTakePhoto">ถ่ายรูป</button>
+      <button class="btn btn-secondary btn-block" id="btnChooseGallery">เลือกจากคลังภาพ</button>
     </section>
 
     <!-- Step 2: Annotate -->
@@ -79,71 +93,86 @@
         <canvas id="overlayCanvas"></canvas>
       </div>
       <p class="hint">
-        Drag a box over the patient's name first — it will be marked <b>Redact</b> by default and
-        permanently blacked out. Draw more boxes for any fields you want read (HN, DOB, weight, ward…),
-        then type a label for each.
+        ลากกรอบทับชื่อผู้ป่วยก่อน — ระบบจะตั้งเป็น <b>ปิดชื่อ</b> โดยอัตโนมัติและปิดถาวร
+        วาดกรอบเพิ่มสำหรับข้อมูลที่ต้องการอ่าน (HN, DOB, น้ำหนัก, ward…) แล้วพิมพ์ชื่อกำกับแต่ละกรอบ
+        — วาดได้หลายกรอบต่อหนึ่งรูป
       </p>
       <div class="region-list" id="regionList"></div>
       <div class="btn-row">
-        <button class="btn btn-secondary" id="btnRetakePhoto">Retake</button>
-        <button class="btn btn-primary" id="btnGoRedact" disabled>Continue</button>
+        <button class="btn btn-secondary" id="btnRetakePhoto">ถ่ายใหม่</button>
+        <button class="btn btn-primary" id="btnGoRedact" disabled>ดำเนินการต่อ</button>
       </div>
     </section>
 
     <!-- Step 3: OCR progress -->
     <section class="step" id="step-ocr">
       <div class="card">
-        <img class="thumb-preview" id="redactedThumb" alt="Redacted preview" />
+        <img class="thumb-preview" id="redactedThumb" alt="ตัวอย่างรูปที่ปิดชื่อแล้ว" />
       </div>
       <div class="card">
-        <p class="progress-line" id="ocrProgressLine">Reading fields…</p>
+        <p class="progress-line" id="ocrProgressLine">กำลังอ่านข้อมูล…</p>
       </div>
     </section>
 
     <!-- Step 4: Review -->
     <section class="step" id="step-review">
       <div class="card">
-        <img class="thumb-preview" id="reviewThumb" alt="Redacted preview" />
+        <img class="thumb-preview" id="reviewThumb" alt="ตัวอย่างรูปที่ปิดชื่อแล้ว" />
       </div>
       <div class="region-list" id="resultList"></div>
       <div class="btn-row">
-        <button class="btn btn-secondary" id="btnStartOver">Start Over</button>
-        <button class="btn btn-primary" id="btnGoExport">Export</button>
+        <button class="btn btn-secondary" id="btnStartOver">เริ่มใหม่</button>
+        <button class="btn btn-primary" id="btnGoExport">ส่งออก</button>
       </div>
     </section>
 
-    <!-- Step 5: Export -->
+    <!-- Step 5: Codename -->
+    <section class="step" id="step-codename">
+      <div class="card">
+        <p class="hint">
+          เลือกรหัสประจำผู้ป่วยรายนี้ — ใช้แยกแฟ้มรูปเท่านั้น ไม่ใช่ชื่อจริง
+          หากถ่ายรูปผู้ป่วยรายเดิมซ้ำ (เช่น วันถัดไป) เลือกรหัสเดิมที่เคยใช้กับรายนี้
+        </p>
+      </div>
+      <div class="codename-grid" id="codenameGrid"></div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="btnBackToReview">ย้อนกลับ</button>
+        <button class="btn btn-primary" id="btnGoExportFromCodename" disabled>ดำเนินการต่อ</button>
+      </div>
+    </section>
+
+    <!-- Step 6: Export -->
     <section class="step" id="step-export">
       <div class="card" id="syncCard">
-        <p class="hint" id="syncHint">Send the redacted photo and fields to the NICU Sheet.</p>
-        <button class="btn btn-primary btn-block" id="btnSync">Sync to NICU Sheet</button>
-        <button class="btn btn-secondary btn-block" id="btnLoginToSync" style="display:none;">Log in to sync</button>
+        <p class="hint" id="syncHint">ส่งรูปที่ปิดชื่อแล้วและข้อมูลไปยัง NICU Sheet</p>
+        <button class="btn btn-primary btn-block" id="btnSync">Sync ไปยัง NICU Sheet</button>
+        <button class="btn btn-secondary btn-block" id="btnLoginToSync" style="display:none;">เข้าสู่ระบบเพื่อ sync</button>
         <p class="progress-line" id="syncStatusLine" style="display:none;"></p>
       </div>
       <div class="card">
-        <p class="hint">Or save locally instead — files download straight to this phone, nothing is uploaded.</p>
+        <p class="hint">หรือบันทึกไว้ในเครื่องแทน — ไฟล์จะถูกดาวน์โหลดลงเครื่องนี้โดยตรง ไม่มีการอัปโหลดใดๆ</p>
       </div>
-      <button class="btn btn-secondary btn-block" id="btnExportTxt">Download .txt</button>
-      <button class="btn btn-secondary btn-block" id="btnExportJson">Download .json</button>
-      <button class="btn btn-secondary btn-block" id="btnExportPng">Download redacted photo (.png)</button>
-      <button class="btn btn-secondary btn-block" id="btnDone">Done — Start Next Patient</button>
+      <button class="btn btn-secondary btn-block" id="btnExportTxt">ดาวน์โหลด .txt</button>
+      <button class="btn btn-secondary btn-block" id="btnExportJson">ดาวน์โหลด .json</button>
+      <button class="btn btn-secondary btn-block" id="btnExportPng">ดาวน์โหลดรูปที่ปิดชื่อแล้ว (.png)</button>
+      <button class="btn btn-secondary btn-block" id="btnDone">เสร็จสิ้น — เริ่มผู้ป่วยรายถัดไป</button>
     </section>
 
   </main>
 
   <footer class="bottombar">
-    <p class="hint" id="footerHint">NeoRedact never sends photos or names anywhere.</p>
-    <button class="btn btn-secondary btn-block" id="btnLogout" style="display:none; margin-top:8px;">Sign out</button>
+    <p class="hint" id="footerHint">NeoRedact ไม่ส่งรูปหรือชื่อผู้ป่วยออกไปที่ใดเลย</p>
+    <button class="btn btn-secondary btn-block" id="btnLogout" style="display:none; margin-top:8px;">ออกจากระบบ</button>
   </footer>
 </div>
 
 <div class="modal-backdrop" id="redactModalBackdrop">
   <div class="modal">
-    <h2>Permanently redact?</h2>
+    <h2>ปิดชื่อแบบถาวรใช่หรือไม่?</h2>
     <p id="redactModalBody"></p>
     <div class="btn-row">
-      <button class="btn btn-secondary" id="btnRedactCancel">Cancel</button>
-      <button class="btn btn-danger" id="btnRedactConfirm">Black Out &amp; Continue</button>
+      <button class="btn btn-secondary" id="btnRedactCancel">ยกเลิก</button>
+      <button class="btn btn-danger" id="btnRedactConfirm">ปิดทับและดำเนินการต่อ</button>
     </div>
   </div>
 </div>
@@ -152,6 +181,7 @@
 <script src="vendor/tesseract/tesseract.min.js"></script>
 
 <!-- App modules, explicit load order -->
+<script src="codenames.js"></script>
 <script src="camera-capture.js"></script>
 <script src="canvas-annotator.js"></script>
 <script src="redactor.js"></script>

@@ -6,13 +6,17 @@
 
   const NR = window.NeoRedact;
 
-  const steps = ['capture', 'annotate', 'ocr', 'review', 'export'];
-  const stepLabels = { capture: 'Capture', annotate: 'Annotate', ocr: 'Reading', review: 'Review', export: 'Export' };
+  const steps = ['capture', 'annotate', 'ocr', 'review', 'codename', 'export'];
+  const stepLabels = {
+    capture: 'ถ่ายรูป', annotate: 'ทำเครื่องหมาย', ocr: 'กำลังอ่าน', review: 'ตรวจสอบ',
+    codename: 'เลือกรหัส', export: 'ส่งออก',
+  };
 
   const state = {
     redacted: false,
     regions: [],
     results: [], // [{id, label, text}]
+    codename: '',
     pendingReturnStep: null, // where to go after a login triggered mid-flow
   };
 
@@ -50,6 +54,9 @@
     resultList: document.getElementById('resultList'),
     btnStartOver: document.getElementById('btnStartOver'),
     btnGoExport: document.getElementById('btnGoExport'),
+    codenameGrid: document.getElementById('codenameGrid'),
+    btnBackToReview: document.getElementById('btnBackToReview'),
+    btnGoExportFromCodename: document.getElementById('btnGoExportFromCodename'),
     syncCard: document.getElementById('syncCard'),
     syncHint: document.getElementById('syncHint'),
     btnSync: document.getElementById('btnSync'),
@@ -101,7 +108,7 @@
 
   function onLoginError(msg) {
     el.loginError.style.display = 'block';
-    el.loginError.textContent = msg || 'Login failed.';
+    el.loginError.textContent = msg || 'เข้าสู่ระบบไม่สำเร็จ';
   }
 
   el.btnTogglePasswordForm.addEventListener('click', () => {
@@ -117,9 +124,9 @@
     el.loginError.style.display = 'none';
     const email = el.loginEmail.value.trim();
     const password = el.loginPassword.value;
-    if (!email || !password) { onLoginError('Enter both email and password.'); return; }
+    if (!email || !password) { onLoginError('กรุณากรอกทั้งอีเมลและรหัสผ่าน'); return; }
     el.btnPasswordLogin.disabled = true;
-    el.btnPasswordLogin.textContent = 'Signing in…';
+    el.btnPasswordLogin.textContent = 'กำลังเข้าสู่ระบบ…';
     try {
       const result = await NR.auth.loginWithPassword(email, password);
       if (result.status === 'ok') onLoginSuccess();
@@ -128,7 +135,7 @@
       onLoginError(err.message);
     } finally {
       el.btnPasswordLogin.disabled = false;
-      el.btnPasswordLogin.textContent = 'Sign in';
+      el.btnPasswordLogin.textContent = 'เข้าสู่ระบบ';
     }
   });
   el.btnSkipLogin.addEventListener('click', () => showStep('capture'));
@@ -183,14 +190,14 @@
 
       const input = document.createElement('input');
       input.type = 'text';
-      input.placeholder = 'Field label (e.g. HN, DOB)';
+      input.placeholder = 'ชื่อข้อมูล (เช่น HN, DOB)';
       input.value = r.label;
       input.addEventListener('input', () => annotatorCtrl.setLabel(r.id, input.value));
 
       const toggle = document.createElement('button');
       toggle.type = 'button';
       toggle.className = 'redact-toggle' + (r.redact ? ' on' : '');
-      toggle.textContent = r.redact ? 'REDACT' : 'OCR';
+      toggle.textContent = r.redact ? 'ปิดชื่อ' : 'อ่านค่า';
       toggle.addEventListener('click', () => annotatorCtrl.toggleRedact(r.id));
 
       const remove = document.createElement('button');
@@ -214,8 +221,8 @@
     const redactCount = state.regions.filter((r) => r.redact).length;
     const ocrCount = state.regions.length - redactCount;
     el.redactModalBody.textContent =
-      `This will permanently black out ${redactCount} region(s) and read ${ocrCount} region(s) as text. ` +
-      `The blackout cannot be undone. Continue?`;
+      `การดำเนินการนี้จะปิดทับถาวร ${redactCount} ตำแหน่ง และอ่านค่า ${ocrCount} ตำแหน่งเป็นข้อความ ` +
+      `การปิดทับไม่สามารถย้อนกลับได้ ดำเนินการต่อหรือไม่?`;
     el.redactModalBackdrop.classList.add('active');
   });
 
@@ -242,21 +249,21 @@
   // --- Step 3: OCR ---------------------------------------------------
 
   async function runOcr() {
-    el.ocrProgressLine.textContent = 'Starting OCR engine…';
+    el.ocrProgressLine.textContent = 'กำลังเริ่มเครื่องมือ OCR…';
     try {
       const results = await NR.ocrEngine.recognizeRegions(el.workCanvas, state.regions, {
         redacted: state.redacted, // must be true — set only by the confirm handler above
         lang: 'tha+eng',
         onProgress: ({ index, total, label }) => {
-          el.ocrProgressLine.textContent = `Reading "${label}" (${index + 1}/${total})…`;
+          el.ocrProgressLine.textContent = `กำลังอ่าน "${label}" (${index + 1}/${total})…`;
         },
       });
       state.results = results;
       renderResults();
       showStep('review');
     } catch (err) {
-      el.ocrProgressLine.textContent = 'OCR failed: ' + err.message +
-        ' — if this is the first run, the app may need one connection to Wi-Fi to prepare the offline OCR engine.';
+      el.ocrProgressLine.textContent = 'OCR ล้มเหลว: ' + err.message +
+        ' — หากเป็นการใช้งานครั้งแรก แอปอาจต้องเชื่อมต่อ Wi-Fi หนึ่งครั้งเพื่อเตรียมเครื่องมือ OCR แบบออฟไลน์';
     }
   }
 
@@ -279,9 +286,9 @@
       const retry = document.createElement('button');
       retry.type = 'button';
       retry.className = 'retry-btn';
-      retry.textContent = 'Retry OCR on this field';
+      retry.textContent = 'อ่านซ้ำอีกครั้ง';
       retry.addEventListener('click', async () => {
-        retry.textContent = 'Reading…';
+        retry.textContent = 'กำลังอ่าน…';
         const region = state.regions.find((reg) => reg.id === r.id);
         const [single] = await NR.ocrEngine.recognizeRegions(el.workCanvas, [region], {
           redacted: state.redacted,
@@ -289,7 +296,7 @@
         });
         r.text = single.text;
         textarea.value = single.text;
-        retry.textContent = 'Retry OCR on this field';
+        retry.textContent = 'อ่านซ้ำอีกครั้ง';
       });
 
       wrap.append(label, textarea, retry);
@@ -299,25 +306,51 @@
 
   el.btnStartOver.addEventListener('click', resetAll);
   el.btnGoExport.addEventListener('click', () => {
+    renderCodenameGrid();
+    showStep('codename');
+  });
+
+  // --- Step 5: Codename ----------------------------------------------------
+  // The only patient identifier that ever leaves the device — a fixed pool of
+  // 26, no real name/HN/DOB attached. See codenames.js / CLAUDE.md.
+
+  function renderCodenameGrid() {
+    el.codenameGrid.innerHTML = '';
+    NR.CODENAMES.forEach((name) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'codename-btn' + (state.codename === name ? ' selected' : '');
+      btn.textContent = name;
+      btn.addEventListener('click', () => {
+        state.codename = name;
+        renderCodenameGrid();
+      });
+      el.codenameGrid.appendChild(btn);
+    });
+    el.btnGoExportFromCodename.disabled = !state.codename;
+  }
+
+  el.btnBackToReview.addEventListener('click', () => showStep('review'));
+  el.btnGoExportFromCodename.addEventListener('click', () => {
     showStep('export');
     el.syncStatusLine.style.display = 'none';
     renderSyncUI();
   });
 
-  // --- Step 5: Export ---------------------------------------------------
+  // --- Step 6: Export ---------------------------------------------------
 
   function renderSyncUI() {
     if (!NR.sync.isConfigured()) {
       el.btnSync.style.display = 'none';
       el.btnLoginToSync.style.display = 'none';
-      el.syncHint.textContent = 'Sync isn’t set up on this device yet — use the downloads below instead.';
+      el.syncHint.textContent = 'อุปกรณ์นี้ยังไม่ได้ตั้งค่า sync — ใช้การดาวน์โหลดด้านล่างแทน';
       return;
     }
     const session = NR.auth.getSession();
     if (!session) {
       el.btnSync.style.display = 'none';
       el.btnLoginToSync.style.display = 'block';
-      el.syncHint.textContent = 'Log in to send the redacted photo and fields to the NICU Sheet.';
+      el.syncHint.textContent = 'เข้าสู่ระบบเพื่อส่งรูปที่ปิดชื่อแล้วและข้อมูลไปยัง NICU Sheet';
       return;
     }
     el.btnSync.style.display = 'block';
@@ -325,26 +358,28 @@
     el.btnSync.disabled = false;
     const queued = NR.sync.queueLength();
     el.syncHint.textContent =
-      `Signed in as ${session.name}. ` +
+      `เข้าสู่ระบบในชื่อ ${session.name} ` +
       (queued > 0
-        ? `Send the redacted photo and fields to the NICU Sheet. (${queued} earlier submission${queued === 1 ? '' : 's'} still queued offline.)`
-        : 'Send the redacted photo and fields to the NICU Sheet.');
+        ? `ส่งรูปที่ปิดชื่อแล้วและข้อมูลไปยัง NICU Sheet (มี ${queued} รายการก่อนหน้ายังค้างอยู่แบบออฟไลน์)`
+        : 'ส่งรูปที่ปิดชื่อแล้วและข้อมูลไปยัง NICU Sheet');
   }
 
   el.btnSync.addEventListener('click', async () => {
     el.btnSync.disabled = true;
     el.syncStatusLine.style.display = 'block';
-    el.syncStatusLine.textContent = 'Syncing…';
-    const result = await NR.sync.syncNow(el.workCanvas, state.results, '');
+    el.syncStatusLine.textContent = 'กำลัง sync…';
+    const result = await NR.sync.syncNow(el.workCanvas, state.results, '', state.codename);
     if (result.status === 'synced') {
-      el.syncStatusLine.textContent = 'Synced to the NICU Sheet.';
+      el.syncStatusLine.textContent = 'Sync ไปยัง NICU Sheet เรียบร้อยแล้ว';
     } else if (result.status === 'needs-login') {
-      el.syncStatusLine.textContent = 'Saved on this phone — your login expired, sign in again to send it.';
+      el.syncStatusLine.textContent = 'บันทึกไว้ในเครื่องนี้แล้ว — การเข้าสู่ระบบหมดอายุ กรุณาเข้าสู่ระบบใหม่เพื่อส่งข้อมูล';
       NR.auth.logout();
     } else if (result.status === 'queued-offline') {
-      el.syncStatusLine.textContent = 'No connection right now — saved on this phone and will send automatically once back online.';
+      el.syncStatusLine.textContent = 'ขณะนี้ไม่มีการเชื่อมต่อ — บันทึกไว้ในเครื่องนี้แล้ว และจะส่งอัตโนมัติเมื่อกลับมาออนไลน์';
+    } else if (result.status === 'missing-codename') {
+      el.syncStatusLine.textContent = 'กรุณาเลือกรหัสผู้ป่วยก่อน sync';
     } else {
-      el.syncStatusLine.textContent = 'Sync isn’t configured on this device.';
+      el.syncStatusLine.textContent = 'อุปกรณ์นี้ยังไม่ได้ตั้งค่า sync';
     }
     renderSyncUI();
   });
@@ -358,6 +393,7 @@
     state.redacted = false;
     state.regions = [];
     state.results = [];
+    state.codename = '';
     if (annotatorCtrl) annotatorCtrl.reset();
     const ctx = el.workCanvas.getContext('2d');
     ctx.clearRect(0, 0, el.workCanvas.width, el.workCanvas.height);
@@ -374,13 +410,13 @@
   if ('serviceWorker' in navigator) {
     if (!navigator.serviceWorker.controller) {
       swStatus.style.display = 'block';
-      swStatus.textContent = 'Preparing offline OCR engine (one-time download, needs Wi-Fi)…';
+      swStatus.textContent = 'กำลังเตรียมเครื่องมือ OCR แบบออฟไลน์ (ดาวน์โหลดครั้งเดียว ต้องใช้ Wi-Fi)…';
     }
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').catch((err) => {
         console.warn('NeoRedact: service worker registration failed', err);
         swStatus.style.display = 'block';
-        swStatus.textContent = 'Could not prepare the offline OCR engine — check your connection and reload.';
+        swStatus.textContent = 'เตรียมเครื่องมือ OCR แบบออฟไลน์ไม่สำเร็จ — ตรวจสอบการเชื่อมต่อแล้วโหลดใหม่';
       });
     });
     navigator.serviceWorker.ready.then(() => {

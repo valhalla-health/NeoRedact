@@ -9,8 +9,34 @@ that's the only network traffic this app ever generates.
 ## Status
 
 Core redact+OCR flow (v1) done. Phase 1 sync to `nicu-tools/neoredact-sync` (GAS backend)
-is now wired in — see "Sync" section below. Codename generation and full NICU-dashboard
-integration are still a deliberate future phase, out of scope here.
+is now wired in — see "Sync" section below. Codename identity model + read-only dashboard
+(`dashboard.html`) landed 2026-07-16 — see "Codename identity model" below.
+
+## Codename identity model (added 2026-07-16)
+
+The cloud side (Sheet, Drive, dashboard) is never supposed to learn who a patient actually
+is — only a codename. Praew keeps her own private mapping (codename + date -> real
+HN/AN/name) on her desktop, entirely outside this system; date is what disambiguates a
+reused codename on her side, this app never tracks that.
+
+- **Codename pool**: fixed 26 values, the NATO phonetic alphabet (Alpha…Zulu) — see
+  `codenames.js`. Identical list duplicated in `neoredact-sync/Code.gs`'s `CODENAMES`
+  constant; keep both in sync if this ever changes.
+- **Wizard step**: a new "codename" step between Review and Export — nurse picks one of
+  the 26 before Sync becomes reachable. Not required for offline redact/OCR/local export,
+  only for the Sync path (`app.js`/`index.html`).
+- **HN/DOB never reach the cloud**: `sync.js` strips any field labeled HN/DOB/name/AN
+  (`IDENTIFYING_FIELD_KEYS`) before building the sync payload; `Code.gs`'s
+  `stripIdentifyingFields_` independently re-filters server-side — defense in depth, same
+  pattern as the redact-before-OCR guard. The `Submissions` sheet has no HN/DOB/name
+  column at all (replaced by `codename`).
+- **Drive layout**: `NeoRedact Submissions/<codename>/<yyyy-MM-dd>/<syncId>.jpg` — one
+  folder per codename, dated subfolder inside. (Changed from the old flat
+  `<yyyy-MM-dd>/<syncId>.jpg` layout — old files aren't migrated.)
+- **Dashboard** (`dashboard.html` + `dashboard.js`): read-only, staff-login-gated (reuses
+  `auth.js`), lists submissions grouped by codename with date/ward/fields/photo link.
+  Calls a new `list_dashboard` action on the same GAS backend. No patient-management
+  (create/rename/discharge) — v1 is intentionally just a viewer.
 
 ## Stack
 
@@ -89,8 +115,9 @@ an account; a session is only required at the moment of actually hitting Sync.
   `localStorage` — clears when the browser fully closes, the right call for a shared/BYOD
   device) under `neoredact_session_v1`.
 - **What gets sent**: the already-redacted canvas (JPEG, base64) + the reviewed field
-  labels/text from the OCR step + a client-generated `syncId` (UUID) + the session token.
-  Nothing upstream of the redact step is ever touched by either module.
+  labels/text from the OCR step (minus anything HN/DOB/name-labeled — see "Codename
+  identity model") + the selected codename + a client-generated `syncId` (UUID) + the
+  session token. Nothing upstream of the redact step is ever touched by either module.
 - **Offline handling**: `sync.js` keeps a `localStorage` retry queue
   (`neoredact_sync_queue_v1`). A failed POST (no connection, GAS down, expired session)
   queues the payload instead of losing it; the queue flushes automatically on page load and

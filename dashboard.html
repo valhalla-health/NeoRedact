@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#14181c" />
+<title>NeoRedact — Dashboard</title>
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+<script>
+  const NEOREDACT_GAS_URL = "https://script.google.com/macros/s/AKfycbwOXLXgiT1Mk0kryYw39VLkcmMqGpHmDQ8VA3QhssaN6mreD17duuy72JunC25BaoN5/exec";
+  const NEOREDACT_CLIENT_ID = "211053989021-q9r94sd06o33d96k07svus9b688go7lv.apps.googleusercontent.com";
+</script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+<div id="app" style="max-width: 720px;">
+  <header class="topbar">
+    <h1>NeoRedact Dashboard</h1>
+  </header>
+
+  <main>
+    <p class="hint" style="padding: 0 2px;">
+      แสดงเฉพาะรหัสผู้ป่วย (ไม่ใช่ชื่อจริง) วันที่ และรูปที่ปิดชื่อแล้ว —
+      การจับคู่รหัสกับผู้ป่วยจริงอยู่ในสมุดบันทึกส่วนตัวเท่านั้น ไม่ได้เก็บในระบบนี้
+    </p>
+
+    <section id="dashLogin">
+      <div class="card">
+        <div id="googleSignInContainer"></div>
+      </div>
+      <button class="btn btn-secondary btn-block" id="btnTogglePasswordForm">ใช้อีเมลและรหัสผ่านแทน</button>
+      <div id="passwordLoginForm" style="display:none;">
+        <div class="card" style="display:flex; flex-direction:column; gap:10px;">
+          <input type="email" id="loginEmail" placeholder="อีเมล" autocomplete="username" />
+          <input type="password" id="loginPassword" placeholder="รหัสผ่าน" autocomplete="current-password" />
+        </div>
+        <button class="btn btn-primary btn-block" id="btnPasswordLogin">เข้าสู่ระบบ</button>
+      </div>
+      <p class="badge-danger" id="loginError" style="display:none;"></p>
+    </section>
+
+    <section id="dashContent" style="display:none;">
+      <div class="card" id="dashStatus"></div>
+      <div class="card" style="overflow-x:auto;">
+        <table class="dashboard-table" id="dashTable"></table>
+      </div>
+      <button class="btn btn-secondary btn-block" id="btnRefresh">รีเฟรช</button>
+    </section>
+  </main>
+</div>
+
+<script src="auth.js"></script>
+<script src="dashboard.js"></script>
+</body>
+</html>

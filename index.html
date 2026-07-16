@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#14181c" />
+<title>NeoRedact</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png" />
+<link rel="icon" type="image/x-icon" href="icons/favicon.ico" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+<script>
+  // Fill these in after deploying nicu-tools/neoredact-sync (see its README):
+  //   1. Deploy the GAS web app, copy its /exec URL here.
+  //   2. A Google OAuth Client ID for Sign-In — try reusing NeoFeed's existing
+  //      one first (Google validates by origin, not path); create a new one
+  //      in Google Cloud Console > Credentials if this app's origin differs.
+  const NEOREDACT_GAS_URL = "https://script.google.com/macros/s/AKfycbwOXLXgiT1Mk0kryYw39VLkcmMqGpHmDQ8VA3QhssaN6mreD17duuy72JunC25BaoN5/exec";
+  const NEOREDACT_CLIENT_ID = "";
+</script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <h1>NeoRedact</h1>
+    <span class="step-badge" id="stepBadge">1 / 5 · Capture</span>
+  </header>
+
+  <main>
+
+    <div class="badge-warn" id="swStatus" style="display:none;"></div>
+
+    <!-- Step 0: Login -->
+    <section class="step active" id="step-login">
+      <div class="card">
+        <p class="hint">Sign in to send redacted photos to the NICU Sheet. Redaction and OCR still work without this — signing in is only needed for sync.</p>
+      </div>
+      <div class="card">
+        <div id="googleSignInContainer"></div>
+      </div>
+      <button class="btn btn-secondary btn-block" id="btnTogglePasswordForm">Use email &amp; password instead</button>
+      <div id="passwordLoginForm" style="display:none;">
+        <div class="card" style="display:flex; flex-direction:column; gap:10px;">
+          <input type="email" id="loginEmail" placeholder="Email" autocomplete="username" />
+          <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" />
+        </div>
+        <button class="btn btn-primary btn-block" id="btnPasswordLogin">Sign in</button>
+        <button class="btn btn-secondary btn-block" id="btnBackToGoogle">Back</button>
+      </div>
+      <p class="badge-danger" id="loginError" style="display:none;"></p>
+      <button class="btn btn-secondary btn-block" id="btnSkipLogin">Skip for now (redact/OCR only, no sync)</button>
+    </section>
+
+    <!-- Step 1: Capture -->
+    <section class="step" id="step-capture">
+      <div class="card">
+        <p class="hint">
+          Take or choose a photo of the patient label. Nothing leaves this phone — the photo never
+          goes online, and after the first install this app keeps working with no internet at all.
+        </p>
+      </div>
+      <input type="file" id="fileInputCamera" accept="image/*" capture="environment" />
+      <input type="file" id="fileInputGallery" accept="image/*" />
+      <button class="btn btn-primary btn-block" id="btnTakePhoto">Take Photo</button>
+      <button class="btn btn-secondary btn-block" id="btnChooseGallery">Choose from Gallery</button>
+    </section>
+
+    <!-- Step 2: Annotate -->
+    <section class="step" id="step-annotate">
+      <div class="canvas-wrap">
+        <canvas id="workCanvas"></canvas>
+        <canvas id="overlayCanvas"></canvas>
+      </div>
+      <p class="hint">
+        Drag a box over the patient's name first — it will be marked <b>Redact</b> by default and
+        permanently blacked out. Draw more boxes for any fields you want read (HN, DOB, weight, ward…),
+        then type a label for each.
+      </p>
+      <div class="region-list" id="regionList"></div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="btnRetakePhoto">Retake</button>
+        <button class="btn btn-primary" id="btnGoRedact" disabled>Continue</button>
+      </div>
+    </section>
+
+    <!-- Step 3: OCR progress -->
+    <section class="step" id="step-ocr">
+      <div class="card">
+        <img class="thumb-preview" id="redactedThumb" alt="Redacted preview" />
+      </div>
+      <div class="card">
+        <p class="progress-line" id="ocrProgressLine">Reading fields…</p>
+      </div>
+    </section>
+
+    <!-- Step 4: Review -->
+    <section class="step" id="step-review">
+      <div class="card">
+        <img class="thumb-preview" id="reviewThumb" alt="Redacted preview" />
+      </div>
+      <div class="region-list" id="resultList"></div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="btnStartOver">Start Over</button>
+        <button class="btn btn-primary" id="btnGoExport">Export</button>
+      </div>
+    </section>
+
+    <!-- Step 5: Export -->
+    <section class="step" id="step-export">
+      <div class="card" id="syncCard">
+        <p class="hint" id="syncHint">Send the redacted photo and fields to the NICU Sheet.</p>
+        <button class="btn btn-primary btn-block" id="btnSync">Sync to NICU Sheet</button>
+        <button class="btn btn-secondary btn-block" id="btnLoginToSync" style="display:none;">Log in to sync</button>
+        <p class="progress-line" id="syncStatusLine" style="display:none;"></p>
+      </div>
+      <div class="card">
+        <p class="hint">Or save locally instead — files download straight to this phone, nothing is uploaded.</p>
+      </div>
+      <button class="btn btn-secondary btn-block" id="btnExportTxt">Download .txt</button>
+      <button class="btn btn-secondary btn-block" id="btnExportJson">Download .json</button>
+      <button class="btn btn-secondary btn-block" id="btnExportPng">Download redacted photo (.png)</button>
+      <button class="btn btn-secondary btn-block" id="btnDone">Done — Start Next Patient</button>
+    </section>
+
+  </main>
+
+  <footer class="bottombar">
+    <p class="hint" id="footerHint">NeoRedact never sends photos or names anywhere.</p>
+    <button class="btn btn-secondary btn-block" id="btnLogout" style="display:none; margin-top:8px;">Sign out</button>
+  </footer>
+</div>
+
+<div class="modal-backdrop" id="redactModalBackdrop">
+  <div class="modal">
+    <h2>Permanently redact?</h2>
+    <p id="redactModalBody"></p>
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="btnRedactCancel">Cancel</button>
+      <button class="btn btn-danger" id="btnRedactConfirm">Black Out &amp; Continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- Vendored offline OCR engine (no CDN — see CLAUDE.md) -->
+<script src="vendor/tesseract/tesseract.min.js"></script>
+
+<!-- App modules, explicit load order -->
+<script src="camera-capture.js"></script>
+<script src="canvas-annotator.js"></script>
+<script src="redactor.js"></script>
+<script src="ocr-engine.js"></script>
+<script src="export.js"></script>
+<script src="auth.js"></script>
+<script src="sync.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>

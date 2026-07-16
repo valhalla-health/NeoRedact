@@ -89,6 +89,7 @@ main {
 .login-center > #passwordLoginForm,
 .login-center > #btnSkipLogin,
 .login-center > #loginError { width: 100%; max-width: 320px; }
+.login-center > #btnSkipLogin { margin-top: 20px; }
 
 .link-btn {
   appearance: none;
@@ -102,6 +103,19 @@ main {
   padding: 4px;
 }
 .link-btn:hover { color: var(--ink); }
+
+.skip-link {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--ink-dim);
+  font-family: inherit;
+  font-size: 12px;
+  opacity: 0.65;
+  cursor: pointer;
+  padding: 4px;
+}
+.skip-link:hover { opacity: 1; text-decoration: underline; }
 
 .text-center { text-align: center; }
 .text-center .hint { text-align: center; }

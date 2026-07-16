@@ -19,11 +19,10 @@
 <script>
   // Fill these in after deploying nicu-tools/neoredact-sync (see its README):
   //   1. Deploy the GAS web app, copy its /exec URL here.
-  //   2. A Google OAuth Client ID for Sign-In — try reusing NeoFeed's existing
-  //      one first (Google validates by origin, not path); create a new one
-  //      in Google Cloud Console > Credentials if this app's origin differs.
+  //   2. A Google OAuth Client ID for Sign-In, created dedicated to NeoRedact's
+  //      hosting origin in Google Cloud Console > Credentials.
   const NEOREDACT_GAS_URL = "https://script.google.com/macros/s/AKfycbwOXLXgiT1Mk0kryYw39VLkcmMqGpHmDQ8VA3QhssaN6mreD17duuy72JunC25BaoN5/exec";
-  const NEOREDACT_CLIENT_ID = "750019806043-imunne8ndetdesii70o3t1vnr0ta2br4.apps.googleusercontent.com"; // reused from NeoFeed — see note above
+  const NEOREDACT_CLIENT_ID = "211053989021-q9r94sd06o33d96k07svus9b688go7lv.apps.googleusercontent.com";
 </script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>

@@ -37,6 +37,19 @@ reused codename on her side, this app never tracks that.
   `auth.js`), lists submissions grouped by codename with date/ward/fields/photo link.
   Calls a new `list_dashboard` action on the same GAS backend. No patient-management
   (create/rename/discharge) — v1 is intentionally just a viewer.
+- **Local exports (`export.js`) also carry the codename** (filename + file content for
+  txt/json), plus a shared `artifactId` (`app.js`'s `state.artifactId`, generated once at
+  redact time) — the same id becomes the Sync payload's `syncId` if that same photo is
+  later synced, so a locally-downloaded file and its eventual Sheet row are
+  cross-referenceable. Fixed 2026-07-16 after Praew noticed exported filenames
+  (`neoredact-photo-20260716-2221.png`) had no codename at all — a `/scrutinize` review
+  traced it to `export.js` never having been updated when the codename step was added.
+- **The codename step intentionally gates both Sync and local export**, with no "skip"
+  option (unlike login's explicit skip). This was scrutinized and kept as-is: codename
+  selection is a pure client-side step with no network dependency, so it doesn't violate
+  "works fully offline" — and forcing it before *any* output (not just Sync) matches the
+  actual threat model, since nurses already share raw photos informally via LINE outside
+  the app's control. Don't "fix" this by adding a skip button.
 
 ## Stack
 

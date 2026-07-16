@@ -41,15 +41,19 @@ window.NeoRedact = window.NeoRedact || {};
   // pattern as the redact step never trusting a single check).
   const IDENTIFYING_FIELD_KEYS = /^(hn|dob|name|ชื่อ|an|hn\/an|admission ?number|hospital ?number)$/i;
 
-  // fields: [{ label, text }] from app.js's review step
-  function buildPayload(canvas, fields, ward, codename, sessionToken) {
+  // fields: [{ label, text }] from app.js's review step. `id`, when given, is
+  // the same artifactId app.js generated at redact time and may already be
+  // baked into a local export's filename/content — reusing it here (instead
+  // of minting a fresh one) keeps a locally-saved file and its later-synced
+  // Sheet row cross-referenceable by the same id.
+  function buildPayload(canvas, fields, ward, codename, sessionToken, id) {
     const fieldsObj = {};
     fields.forEach((f) => {
       const label = f.label && f.label.trim();
       if (label && !IDENTIFYING_FIELD_KEYS.test(label)) fieldsObj[label] = f.text;
     });
     return {
-      syncId: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()),
+      syncId: id || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()),
       capturedAt: new Date().toISOString(),
       ward: ward || '',
       codename: codename || '',
@@ -74,7 +78,7 @@ window.NeoRedact = window.NeoRedact || {};
   }
 
   // Returns { status: 'synced' | 'queued-offline' | 'needs-login' | 'not-configured', detail }
-  async function syncNow(canvas, fields, ward, codename) {
+  async function syncNow(canvas, fields, ward, codename, id) {
     if (!isConfigured()) {
       return { status: 'not-configured' };
     }
@@ -85,7 +89,7 @@ window.NeoRedact = window.NeoRedact || {};
     if (!session) {
       return { status: 'needs-login' };
     }
-    const payload = buildPayload(canvas, fields, ward, codename, session.token);
+    const payload = buildPayload(canvas, fields, ward, codename, session.token, id);
     try {
       const result = await postPayload(payload);
       if (isAuthError(result)) {

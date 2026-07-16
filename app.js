@@ -17,6 +17,7 @@
     regions: [],
     results: [], // [{id, label, text}]
     codename: '',
+    artifactId: '', // one id per photo — see btnRedactConfirm handler
     pendingReturnStep: null, // where to go after a login triggered mid-flow
   };
 
@@ -237,6 +238,10 @@
     // the pre-redaction pixels is made before or after this call.
     NR.redactor.applyRedaction(el.workCanvas, state.regions);
     state.redacted = true;
+    // One id per photo, generated here and reused by every downstream
+    // artifact (local export filenames/content and the eventual sync
+    // payload) so they can all be cross-referenced against each other.
+    state.artifactId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
     annotatorCtrl.redrawOverlay(); // regions still shown as outlines; pixels underneath are now black
 
     const redactedDataUrl = el.workCanvas.toDataURL('image/png');
@@ -368,7 +373,7 @@
     el.btnSync.disabled = true;
     el.syncStatusLine.style.display = 'block';
     el.syncStatusLine.textContent = 'กำลัง sync…';
-    const result = await NR.sync.syncNow(el.workCanvas, state.results, '', state.codename);
+    const result = await NR.sync.syncNow(el.workCanvas, state.results, '', state.codename, state.artifactId);
     if (result.status === 'synced') {
       el.syncStatusLine.textContent = 'Sync ไปยัง NICU Sheet เรียบร้อยแล้ว';
     } else if (result.status === 'needs-login') {
@@ -384,9 +389,9 @@
     renderSyncUI();
   });
 
-  el.btnExportTxt.addEventListener('click', () => NR.exportModule.exportTxt(state.results));
-  el.btnExportJson.addEventListener('click', () => NR.exportModule.exportJson(state.results));
-  el.btnExportPng.addEventListener('click', () => NR.exportModule.exportRedactedPng(el.workCanvas));
+  el.btnExportTxt.addEventListener('click', () => NR.exportModule.exportTxt(state.results, state.codename, state.artifactId));
+  el.btnExportJson.addEventListener('click', () => NR.exportModule.exportJson(state.results, state.codename, state.artifactId));
+  el.btnExportPng.addEventListener('click', () => NR.exportModule.exportRedactedPng(el.workCanvas, state.codename, state.artifactId));
   el.btnDone.addEventListener('click', resetAll);
 
   function resetAll() {
@@ -394,6 +399,7 @@
     state.regions = [];
     state.results = [];
     state.codename = '';
+    state.artifactId = '';
     if (annotatorCtrl) annotatorCtrl.reset();
     const ctx = el.workCanvas.getContext('2d');
     ctx.clearRect(0, 0, el.workCanvas.width, el.workCanvas.height);

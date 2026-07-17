@@ -1,15 +1,15 @@
 // Wizard controller. Owns the one piece of state that must never be faked:
-// `state.redacted`. Nothing can reach the OCR step without it, and
+// `state.redacted`. Nothing can reach the OCR step until it, and
 // ocr-engine.js independently re-checks it too (see CLAUDE.md).
 (function () {
   'use strict';
 
   const NR = window.NeoRedact;
 
-  const steps = ['capture', 'annotate', 'ocr', 'review', 'codename', 'export'];
+  const steps = ['codename', 'capture', 'annotate', 'ocr', 'review', 'export'];
   const stepLabels = {
-    capture: 'ถ่ายรูป', annotate: 'ทำเครื่องหมาย', ocr: 'กำลังอ่าน', review: 'ตรวจสอบ',
-    codename: 'เลือกรหัส', export: 'ส่งออก',
+    codename: 'เลือกรหัส', capture: 'ถ่ายรูป', annotate: 'ทำเครื่องหมาย', ocr: 'กำลังอ่าน',
+    review: 'ตรวจสอบ', export: 'ส่งออก',
   };
 
   const state = {
@@ -17,6 +17,7 @@
     regions: [],
     results: [], // [{id, label, text}]
     codename: '',
+    templateId: 'manual', // which KCMH page template (if any) auto-seeds redact boxes
     artifactId: '', // one id per photo — see btnRedactConfirm handler
     pendingReturnStep: null, // where to go after a login triggered mid-flow
   };
@@ -36,11 +37,16 @@
     btnSkipLogin: document.getElementById('btnSkipLogin'),
     btnLoginToSync: document.getElementById('btnLoginToSync'),
     btnLogout: document.getElementById('btnLogout'),
+    codenameGrid: document.getElementById('codenameGrid'),
+    btnBackToLoginFromCodename: document.getElementById('btnBackToLoginFromCodename'),
+    btnCodenameContinue: document.getElementById('btnCodenameContinue'),
+    templateSelect: document.getElementById('templateSelect'),
+    templateHint: document.getElementById('templateHint'),
     fileInputCamera: document.getElementById('fileInputCamera'),
     fileInputGallery: document.getElementById('fileInputGallery'),
     btnTakePhoto: document.getElementById('btnTakePhoto'),
     btnChooseGallery: document.getElementById('btnChooseGallery'),
-    btnBackToLoginFromCapture: document.getElementById('btnBackToLoginFromCapture'),
+    btnBackToCodenameFromCapture: document.getElementById('btnBackToCodenameFromCapture'),
     workCanvas: document.getElementById('workCanvas'),
     overlayCanvas: document.getElementById('overlayCanvas'),
     regionList: document.getElementById('regionList'),
@@ -57,10 +63,7 @@
     btnBackToAnnotate: document.getElementById('btnBackToAnnotate'),
     btnStartOver: document.getElementById('btnStartOver'),
     btnGoExport: document.getElementById('btnGoExport'),
-    codenameGrid: document.getElementById('codenameGrid'),
-    btnBackToReview: document.getElementById('btnBackToReview'),
-    btnGoExportFromCodename: document.getElementById('btnGoExportFromCodename'),
-    btnBackToCodenameFromExport: document.getElementById('btnBackToCodenameFromExport'),
+    btnBackToReviewFromExport: document.getElementById('btnBackToReviewFromExport'),
     syncCard: document.getElementById('syncCard'),
     syncHint: document.getElementById('syncHint'),
     btnSync: document.getElementById('btnSync'),
@@ -82,6 +85,7 @@
     } else {
       el.stepBadge.style.display = 'none';
     }
+    if (name === 'codename') renderCodenameGrid();
     renderAuthFooter();
   }
 
@@ -105,7 +109,7 @@
     el.loginError.style.display = 'none';
     const returnTo = state.pendingReturnStep;
     state.pendingReturnStep = null;
-    showStep(returnTo || 'capture');
+    showStep(returnTo || 'codename');
     if (returnTo === 'export') renderSyncUI();
   }
 
@@ -141,7 +145,7 @@
       el.btnPasswordLogin.textContent = 'เข้าสู่ระบบ';
     }
   });
-  el.btnSkipLogin.addEventListener('click', () => showStep('capture'));
+  el.btnSkipLogin.addEventListener('click', () => showStep('codename'));
   el.btnLoginToSync.addEventListener('click', () => {
     state.pendingReturnStep = 'export';
     showStep('login');
@@ -149,16 +153,77 @@
   el.btnLogout.addEventListener('click', () => {
     NR.auth.logout();
     renderAuthFooter();
-    showStep('capture');
+    showStep('codename');
   });
 
   renderLoginStep(); // set up the Google button once, regardless of which step is shown first
 
-  // --- Step 1: Capture ---------------------------------------------------
+  // --- Step 1 (shown first): Codename --------------------------------------
+  // The only patient identifier that ever leaves the device — a fixed pool of
+  // 24, no real name/HN/DOB attached. Picked before Capture so every artifact
+  // produced downstream (redacted image, OCR results, local export, Sync
+  // payload) is already tagged. See codenames.js / CLAUDE.md.
+
+  function renderCodenameGrid() {
+    el.codenameGrid.innerHTML = '';
+    NR.CODENAMES.forEach((name) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'codename-btn' + (state.codename === name ? ' selected' : '');
+      btn.textContent = name;
+      btn.addEventListener('click', () => {
+        state.codename = name;
+        renderCodenameGrid();
+      });
+      el.codenameGrid.appendChild(btn);
+    });
+    el.btnCodenameContinue.disabled = !state.codename;
+  }
+
+  el.btnBackToLoginFromCodename.addEventListener('click', () => showStep('login'));
+  el.btnCodenameContinue.addEventListener('click', () => showStep('capture'));
+
+  // --- Step 2: Capture -----------------------------------------------------
+
+  const MANUAL_TEMPLATE_HINT = 'ไม่วางกรอบอัตโนมัติ — ลากกรอบทับชื่อผู้ป่วยเองตามปกติ';
+  const KCMH_TEMPLATE_HINT =
+    'ระบบจะวางกรอบปิดทึบตำแหน่งโลโก้โรงพยาบาลและสติกเกอร์ (ชื่อ/HN/AN) ให้อัตโนมัติ — ' +
+    'ตำแหน่งเป็นค่าประมาณ ตรวจสอบและลบ/วาดใหม่ได้เสมอก่อนกดดำเนินการต่อ';
+
+  function renderTemplateOptions() {
+    if (!el.templateSelect) return;
+    el.templateSelect.innerHTML = '';
+    const manualOpt = document.createElement('option');
+    manualOpt.value = 'manual';
+    manualOpt.textContent = 'อื่นๆ / ป้ายชื่อ (วาดกรอบเอง)';
+    el.templateSelect.appendChild(manualOpt);
+
+    NR.templates.list.forEach((t) => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.title;
+      el.templateSelect.appendChild(opt);
+    });
+
+    el.templateSelect.value = state.templateId;
+    updateTemplateHint();
+  }
+
+  function updateTemplateHint() {
+    if (!el.templateHint) return;
+    el.templateHint.textContent = state.templateId === 'manual' ? MANUAL_TEMPLATE_HINT : KCMH_TEMPLATE_HINT;
+  }
+
+  el.templateSelect.addEventListener('change', () => {
+    state.templateId = el.templateSelect.value;
+    updateTemplateHint();
+  });
+
+  renderTemplateOptions();
 
   el.btnTakePhoto.addEventListener('click', () => el.fileInputCamera.click());
   el.btnChooseGallery.addEventListener('click', () => el.fileInputGallery.click());
-  el.btnBackToLoginFromCapture.addEventListener('click', () => showStep('login'));
+  el.btnBackToCodenameFromCapture.addEventListener('click', () => showStep('codename'));
 
   async function handleFileChosen(evt) {
     const file = evt.target.files && evt.target.files[0];
@@ -175,6 +240,12 @@
       annotatorCtrl.reset();
       annotatorCtrl.syncOverlaySize();
     }
+
+    if (state.templateId !== 'manual') {
+      const template = NR.templates.getTemplate(state.templateId);
+      if (template) annotatorCtrl.seedFromTemplate(template.regions);
+    }
+
     state.redacted = false;
     state.results = [];
     renderRegionList();
@@ -184,7 +255,7 @@
   el.fileInputCamera.addEventListener('change', handleFileChosen);
   el.fileInputGallery.addEventListener('change', handleFileChosen);
 
-  // --- Step 2: Annotate ---------------------------------------------------
+  // --- Step 3: Annotate -----------------------------------------------------
 
   function renderRegionList() {
     el.regionList.innerHTML = '';
@@ -195,10 +266,15 @@
       if (r.redact) {
         // A redact box's label is never read (redactor.js ignores it, and
         // ocr-engine.js filters redact regions out entirely) — no need to
-        // ask the nurse to name what's being blacked out.
+        // ask the nurse to name what's being blacked out. Template-seeded
+        // boxes still carry a label internally though (e.g. "KCMH logo" vs
+        // "Sticker (Name/HN/AN)") so when there's more than one auto-placed
+        // box on screen, the nurse can tell which is which while checking
+        // them — a hand-drawn box's label is always '' so it just falls
+        // back to the plain generic caption.
         const staticLabel = document.createElement('span');
         staticLabel.className = 'region-static-label';
-        staticLabel.textContent = 'พื้นที่ปิดทึบ — ไม่ต้องตั้งชื่อ';
+        staticLabel.textContent = r.label ? `พื้นที่ปิดทึบ: ${r.label}` : 'พื้นที่ปิดทึบ — ไม่ต้องตั้งชื่อ';
         row.appendChild(staticLabel);
       } else {
         const input = document.createElement('input');
@@ -266,7 +342,7 @@
     await runOcr();
   });
 
-  // --- Step 3: OCR ---------------------------------------------------
+  // --- Step 4: OCR ---------------------------------------------------
 
   async function runOcr() {
     el.ocrProgressLine.textContent = 'กำลังเริ่มเครื่องมือ OCR…';
@@ -287,7 +363,7 @@
     }
   }
 
-  // --- Step 4: Review ---------------------------------------------------
+  // --- Step 5: Review ---------------------------------------------------
 
   function renderResults() {
     el.reviewThumb.src = el.workCanvas.toDataURL('image/png');
@@ -327,32 +403,6 @@
   el.btnBackToAnnotate.addEventListener('click', () => showStep('annotate'));
   el.btnStartOver.addEventListener('click', resetAll);
   el.btnGoExport.addEventListener('click', () => {
-    renderCodenameGrid();
-    showStep('codename');
-  });
-
-  // --- Step 5: Codename ----------------------------------------------------
-  // The only patient identifier that ever leaves the device — a fixed pool of
-  // 24, no real name/HN/DOB attached. See codenames.js / CLAUDE.md.
-
-  function renderCodenameGrid() {
-    el.codenameGrid.innerHTML = '';
-    NR.CODENAMES.forEach((name) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'codename-btn' + (state.codename === name ? ' selected' : '');
-      btn.textContent = name;
-      btn.addEventListener('click', () => {
-        state.codename = name;
-        renderCodenameGrid();
-      });
-      el.codenameGrid.appendChild(btn);
-    });
-    el.btnGoExportFromCodename.disabled = !state.codename;
-  }
-
-  el.btnBackToReview.addEventListener('click', () => showStep('review'));
-  el.btnGoExportFromCodename.addEventListener('click', () => {
     showStep('export');
     el.syncStatusLine.style.display = 'none';
     renderSyncUI();
@@ -405,7 +455,7 @@
     renderSyncUI();
   });
 
-  el.btnBackToCodenameFromExport.addEventListener('click', () => showStep('codename'));
+  el.btnBackToReviewFromExport.addEventListener('click', () => showStep('review'));
   el.btnExportPng.addEventListener('click', () => NR.exportModule.exportRedactedPng(el.workCanvas, state.codename, state.artifactId));
   el.btnDone.addEventListener('click', resetAll);
 
@@ -418,10 +468,10 @@
     if (annotatorCtrl) annotatorCtrl.reset();
     const ctx = el.workCanvas.getContext('2d');
     ctx.clearRect(0, 0, el.workCanvas.width, el.workCanvas.height);
-    showStep('capture');
+    showStep('codename');
   }
 
-  showStep(NR.auth.getSession() ? 'capture' : 'login');
+  showStep(NR.auth.getSession() ? 'codename' : 'login');
 
   // First-run (or cache-cleared) offline-engine warm-up indicator. The service
   // worker's install step precaches both the app shell and the ~15-20MB OCR

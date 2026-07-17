@@ -146,6 +146,30 @@ window.NeoRedact = window.NeoRedact || {};
       onChange(getRegions());
     }
 
+    // Pre-populates regions from a page template (templates.js), converting
+    // its %-of-image-size boxes to real pixel coordinates against the
+    // *current* imageCanvas size. Appends to whatever regions already exist
+    // (normally called right after reset(), so that's an empty list) rather
+    // than replacing them outright, so it composes with manual drawing.
+    // Seeded regions are ordinary regions afterwards — draggable-away by
+    // remove, toggleable — nothing downstream needs to know they came from a
+    // template instead of a hand-drawn box.
+    function seedFromTemplate(templateRegions) {
+      (templateRegions || []).forEach((t) => {
+        regions.push({
+          id: nextId++,
+          x: Math.round(t.xPct * imageCanvas.width),
+          y: Math.round(t.yPct * imageCanvas.height),
+          w: Math.round(t.wPct * imageCanvas.width),
+          h: Math.round(t.hPct * imageCanvas.height),
+          label: t.label || '',
+          redact: t.redact !== false,
+        });
+      });
+      redrawOverlay();
+      onChange(getRegions());
+    }
+
     syncOverlaySize();
 
     return {
@@ -155,6 +179,7 @@ window.NeoRedact = window.NeoRedact || {};
       toggleRedact,
       removeRegion,
       reset,
+      seedFromTemplate,
       redrawOverlay,
     };
   }

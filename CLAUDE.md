@@ -23,9 +23,13 @@ reused codename on her side, this app never tracks that.
 - **Codename pool**: fixed 24 values, the NATO phonetic alphabet minus X-ray and Zulu
   (Alpha…Yankee) — see `codenames.js`. Identical list duplicated in
   `neoredact-sync/Code.gs`'s `CODENAMES` constant; keep both in sync if this ever changes.
-- **Wizard step**: a new "codename" step between Review and Export — nurse picks one of
-  the 24 before Sync becomes reachable. Not required for offline redact/OCR/local export,
-  only for the Sync path (`app.js`/`index.html`).
+- **Wizard step**: the "codename" step is the *first* step of the wizard (right after
+  Login, before Capture) — nurse picks one of the 24 before she ever takes the photo, so
+  every artifact produced downstream (redacted image, OCR results, local export, Sync
+  payload) is already tagged. Moved 2026-07-17 from its original position between Review
+  and Export; Review's "ส่งออก" button now goes straight to Export since the codename was
+  already picked at the start of the run. Back-navigation follows the new order: Codename
+  back to Login, Capture back to Codename, Export back to Review.
 - **HN/DOB never reach the cloud**: `sync.js` strips any field labeled HN/DOB/name/AN
   (`IDENTIFYING_FIELD_KEYS`) before building the sync payload; `Code.gs`'s
   `stripIdentifyingFields_` independently re-filters server-side — defense in depth, same
@@ -48,12 +52,63 @@ reused codename on her side, this app never tracks that.
   The separate `.txt`/`.json` download buttons were removed the same day (UI simplification
   — the reviewed fields already reach the NICU Sheet via Sync; `exportTxt`/`exportJson`
   were deleted from `export.js` along with them).
-- **The codename step intentionally gates both Sync and local export**, with no "skip"
-  option (unlike login's explicit skip). This was scrutinized and kept as-is: codename
-  selection is a pure client-side step with no network dependency, so it doesn't violate
-  "works fully offline" — and forcing it before *any* output (not just Sync) matches the
-  actual threat model, since nurses already share raw photos informally via LINE outside
-  the app's control. Don't "fix" this by adding a skip button.
+- **The codename step intentionally gates the whole capture flow** (and therefore both
+  Sync and local export downstream), with no "skip" option (unlike login's explicit skip).
+  This was scrutinized and kept as-is: codename selection is a pure client-side step with
+  no network dependency, so it doesn't violate "works fully offline" — and forcing it
+  before *any* output (not just Sync) matches the actual threat model, since nurses
+  already share raw photos informally via LINE outside the app's control. Don't "fix"
+  this by adding a skip button.
+
+## Template auto-redact (added 2026-07-17)
+
+Completes the backlog "template-based auto-redact of a fixed label position." New
+`templates.js` defines a small set of known KCMH paper chart pages (Critical Care
+Monitoring p1, Progress Note p3, Admission/Delivery Info p6 — measured from real blank
+chart photos, not committed to this repo, see below) with two hand-measured boxes each:
+the KCMH letterhead logo, and the "Sticker" box where the patient ID sticker (Name/HN/AN)
+is affixed. Coordinates are stored as **fractions of image width/height** (not absolute
+pixels), computed against the EXIF-corrected upright photo.
+
+- **UI**: a new "แบบฟอร์มที่กำลังถ่าย" (which form page) `<select>` on the Capture step
+  (`index.html`/`app.js`). Default is `manual` — the original free-hand behavior, unchanged.
+  Picking a KCMH template doesn't change how the photo is taken (still the OS camera picker,
+  no live preview/alignment guide — see "Known limitation" below); it only pre-seeds the
+  Annotate step.
+- **Seeding**: `canvas-annotator.js`'s new `seedFromTemplate(regions)` converts each
+  template region's `xPct/yPct/wPct/hPct` to pixels against the *actual loaded photo's*
+  canvas size, and pushes them as ordinary regions (`redact: true`, pre-labeled). Called
+  once, right after `reset()`, in `app.js`'s `handleFileChosen`.
+- **Still fully manual after seeding**: a seeded region is otherwise an ordinary region —
+  the nurse can remove it and redraw, or toggle redact/read, same controls as always
+  (`renderRegionList`). Nothing about the redact invariant changes: `redactor.js` still
+  just blacks out whatever's in `state.regions` with `redact: true`, template-seeded or
+  not. One difference from a hand-drawn redact box: `renderRegionList` shows the seeded
+  region's label (e.g. "พื้นที่ปิดทึบ: KCMH logo") instead of the generic "ไม่ต้องตั้งชื่อ"
+  caption, since a template can place *two* redact boxes at once and the nurse needs to
+  tell them apart while checking — the label is still never read by `redactor.js` or
+  `ocr-engine.js`, purely a display convenience.
+- **Pages with no identifying fields aren't listed** — e.g. the Intake & Output Record page
+  has no logo or sticker box on it at all, so it isn't a template option; `manual` is used
+  for it same as the original single-label workflow (the wizard still requires at least one
+  `redact: true` region to continue, unchanged).
+- **Known limitation**: capture is still the OS-native camera app via
+  `<input type="file" capture="environment">` (see `camera-capture.js`) — there is no live
+  in-app preview to show an alignment guide while shooting, only the existing static
+  `capture-guide` SVG shown beforehand. So the seeded boxes are only as accurate as how
+  closely the nurse's framing (distance, rotation, crop) matches the one reference photo
+  each template was measured from. Boxes were padded generously beyond the measured text/logo
+  bounds specifically to absorb this, and `redactor.js`'s own per-region padding adds further
+  margin on top — but a badly-off photo can still miss the target. This is why seeded regions
+  stay fully editable rather than being "trusted" outright; there is deliberately no way to
+  skip past Annotate without the nurse's eyes on the boxes.
+- **Reference photos not committed**: the real chart photos used to measure these
+  coordinates live in `LocalOnly/photo to text project/template/` (outside any repo, per this
+  machine's `LocalOnly` convention) — only the derived numeric fractions are in `templates.js`.
+- **If KCMH revises these forms or a new page type is needed**: re-measure the same way —
+  load the photo, correct EXIF orientation, read off the logo/sticker box's pixel bounds, and
+  divide by the corrected image's width/height to get the new `xPct/yPct/wPct/hPct`. Pad
+  generously; err toward over-covering, never under-covering.
 
 ## Stack
 

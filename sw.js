@@ -3,7 +3,7 @@
 // re-vendoring Tesseract.js — see CLAUDE.md).
 'use strict';
 
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const SHELL_CACHE = `neoredact-shell-${CACHE_VERSION}`;
 const OCR_CACHE = `neoredact-ocr-${CACHE_VERSION}`;
 const ALL_CACHES = [SHELL_CACHE, OCR_CACHE];
@@ -14,6 +14,7 @@ const SHELL_FILES = [
   './styles.css',
   './manifest.json',
   './codenames.js',
+  './templates.js',
   './camera-capture.js',
   './canvas-annotator.js',
   './redactor.js',

@@ -30,7 +30,7 @@
 <div id="app">
   <header class="topbar">
     <h1>NeoRedact</h1>
-    <span class="step-badge" id="stepBadge">1 / 5 · Capture</span>
+    <span class="step-badge" id="stepBadge">1 / 6 · เลือกรหัส</span>
   </header>
 
   <main>
@@ -48,21 +48,53 @@
             <input type="email" id="loginEmail" placeholder="อีเมล" autocomplete="username" />
             <input type="password" id="loginPassword" placeholder="รหัสผ่าน" autocomplete="current-password" />
           </div>
-          <button class="btn btn-primary btn-block" id="btnPasswordLogin">เข้าสู่ระบบ</button>
-          <button class="btn btn-secondary btn-block" id="btnBackToGoogle">ย้อนกลับ</button>
+          <button class="btn btn-primary btn-block" id="btnPasswordLogin">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+            เข้าสู่ระบบ
+          </button>
+          <button class="btn btn-secondary btn-block" id="btnBackToGoogle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/></svg>
+            ย้อนกลับ
+          </button>
         </div>
         <p class="badge-danger" id="loginError" style="display:none;"></p>
         <button class="skip-link" id="btnSkipLogin">ข้ามไปก่อน (ปิดชื่อ/OCR เท่านั้น ไม่ sync)</button>
       </div>
     </section>
 
-    <!-- Step 1: Capture -->
+    <!-- Step 1 (shown first after login): Codename -->
+    <section class="step" id="step-codename">
+      <div class="card">
+        <p class="hint">
+          ก่อนถ่ายรูป เลือกรหัสประจำผู้ป่วยรายนี้ก่อน — ใช้แยกแฟ้มรูปเท่านั้น ไม่ใช่ชื่อจริง
+          หากถ่ายรูปผู้ป่วยรายเดิมซ้ำ (เช่น วันถัดไป) เลือกรหัสเดิมที่เคยใช้กับรายนี้
+        </p>
+      </div>
+      <div class="codename-grid" id="codenameGrid"></div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="btnBackToLoginFromCodename">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/></svg>
+          ย้อนกลับ
+        </button>
+        <button class="btn btn-primary" id="btnCodenameContinue" disabled>
+          ดำเนินการต่อ
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- Step 2: Capture -->
     <section class="step" id="step-capture">
       <div class="card">
         <p class="hint">
           ถ่ายหรือเลือกรูปป้ายชื่อผู้ป่วย รูปจะไม่ถูกส่งออกจากเครื่องนี้เลย และหลังติดตั้งครั้งแรก
           แอปนี้ใช้งานได้แม้ไม่มีอินเทอร์เน็ต
         </p>
+      </div>
+      <div class="card">
+        <label class="hint" for="templateSelect" style="display:block; margin-bottom:8px;">แบบฟอร์มที่กำลังถ่าย</label>
+        <select id="templateSelect" class="form-select"></select>
+        <p class="hint" id="templateHint" style="margin-top:8px;"></p>
       </div>
       <div class="card capture-guide">
         <svg viewBox="0 0 320 200" width="100%" height="auto" role="img" aria-label="ตัวอย่างการวางกรอบถ่ายรูป">
@@ -80,30 +112,47 @@
       </div>
       <input type="file" id="fileInputCamera" accept="image/*" capture="environment" />
       <input type="file" id="fileInputGallery" accept="image/*" />
-      <button class="btn btn-primary btn-block" id="btnTakePhoto">ถ่ายรูป</button>
-      <button class="btn btn-secondary btn-block" id="btnChooseGallery">เลือกจากคลังภาพ</button>
-      <button class="btn btn-secondary btn-block" id="btnBackToLoginFromCapture">ย้อนกลับ</button>
+      <button class="btn btn-primary btn-block" id="btnTakePhoto">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        ถ่ายรูป
+      </button>
+      <button class="btn btn-secondary btn-block" id="btnChooseGallery">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 16l-5.5-5.5a1 1 0 0 0-1.4 0L6 19"/></svg>
+        เลือกจากคลังภาพ
+      </button>
+      <button class="btn btn-secondary btn-block" id="btnBackToCodenameFromCapture">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/></svg>
+        ย้อนกลับ
+      </button>
     </section>
 
-    <!-- Step 2: Annotate -->
+    <!-- Step 3: Annotate -->
     <section class="step" id="step-annotate">
       <div class="canvas-wrap">
         <canvas id="workCanvas"></canvas>
         <canvas id="overlayCanvas"></canvas>
       </div>
       <p class="hint">
-        กรอบแรกที่ลาก ระบบจะตั้งเป็น <b>ปิดทึบ</b> โดยอัตโนมัติและปิดถาวร — ใช้ลากทับข้อมูลที่ต้องปิด (เช่น ชื่อผู้ป่วย)
-        ไม่ต้องตั้งชื่อกำกับ วาดกรอบเพิ่มสำหรับข้อมูลที่ต้องการอ่าน (HN, DOB, น้ำหนัก, ward…) แล้วพิมพ์ชื่อกำกับเฉพาะกรอบเหล่านั้น
+        หากเลือกแบบฟอร์มไว้ในขั้นตอนก่อนหน้า ระบบจะวางกรอบ <b>ปิดทึบ</b> ทับตำแหน่งโลโก้/สติกเกอร์ให้อัตโนมัติ —
+        ตรวจสอบตำแหน่งก่อนเสมอ ลบและลากวาดใหม่ได้หากไม่ตรง กรอบแรกที่ลากเอง ระบบจะตั้งเป็น <b>ปิดทึบ</b>
+        โดยอัตโนมัติและปิดถาวร — ใช้ลากทับข้อมูลที่ต้องปิด (เช่น ชื่อผู้ป่วย) ไม่ต้องตั้งชื่อกำกับ
+        วาดกรอบเพิ่มสำหรับข้อมูลที่ต้องการอ่าน (HN, DOB, น้ำหนัก, ward…) แล้วพิมพ์ชื่อกำกับเฉพาะกรอบเหล่านั้น
         — วาดได้หลายกรอบต่อหนึ่งรูป
       </p>
       <div class="region-list" id="regionList"></div>
       <div class="btn-row">
-        <button class="btn btn-secondary" id="btnRetakePhoto">ถ่ายใหม่</button>
-        <button class="btn btn-primary" id="btnGoRedact" disabled>ดำเนินการต่อ</button>
+        <button class="btn btn-secondary" id="btnRetakePhoto">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11A8 8 0 1 0 18.5 16"/><path d="M20 5v6h-6"/></svg>
+          ถ่ายใหม่
+        </button>
+        <button class="btn btn-primary" id="btnGoRedact" disabled>
+          ดำเนินการต่อ
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+        </button>
       </div>
     </section>
 
-    <!-- Step 3: OCR progress -->
+    <!-- Step 4: OCR progress -->
     <section class="step" id="step-ocr">
       <div class="card">
         <img class="thumb-preview" id="redactedThumb" alt="ตัวอย่างรูปที่ปิดชื่อแล้ว" />
@@ -113,57 +162,69 @@
       </div>
     </section>
 
-    <!-- Step 4: Review -->
+    <!-- Step 5: Review -->
     <section class="step" id="step-review">
       <div class="card">
         <img class="thumb-preview" id="reviewThumb" alt="ตัวอย่างรูปที่ปิดชื่อแล้ว" />
       </div>
       <div class="region-list" id="resultList"></div>
       <div class="btn-row">
-        <button class="btn btn-secondary" id="btnBackToAnnotate">ย้อนกลับ</button>
-        <button class="btn btn-primary" id="btnGoExport">ส่งออก</button>
+        <button class="btn btn-secondary" id="btnBackToAnnotate">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/></svg>
+          ย้อนกลับ
+        </button>
+        <button class="btn btn-primary" id="btnGoExport">
+          ส่งออก
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+        </button>
       </div>
-      <button class="btn btn-secondary btn-block" id="btnStartOver">เริ่มใหม่ (ทิ้งรูปนี้)</button>
-    </section>
-
-    <!-- Step 5: Codename -->
-    <section class="step" id="step-codename">
-      <div class="card">
-        <p class="hint">
-          เลือกรหัสประจำผู้ป่วยรายนี้ — ใช้แยกแฟ้มรูปเท่านั้น ไม่ใช่ชื่อจริง
-          หากถ่ายรูปผู้ป่วยรายเดิมซ้ำ (เช่น วันถัดไป) เลือกรหัสเดิมที่เคยใช้กับรายนี้
-        </p>
-      </div>
-      <div class="codename-grid" id="codenameGrid"></div>
-      <div class="btn-row">
-        <button class="btn btn-secondary" id="btnBackToReview">ย้อนกลับ</button>
-        <button class="btn btn-primary" id="btnGoExportFromCodename" disabled>ดำเนินการต่อ</button>
-      </div>
+      <button class="btn btn-secondary btn-block" id="btnStartOver">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11A8 8 0 1 0 18.5 16"/><path d="M20 5v6h-6"/></svg>
+        เริ่มใหม่ (ทิ้งรูปนี้)
+      </button>
     </section>
 
     <!-- Step 6: Export -->
     <section class="step" id="step-export">
-      <button class="btn btn-secondary btn-block" id="btnBackToCodenameFromExport">ย้อนกลับ</button>
+      <button class="btn btn-secondary btn-block" id="btnBackToReviewFromExport">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/></svg>
+        ย้อนกลับ
+      </button>
       <div class="card" id="syncCard">
         <p class="hint" id="syncHint">ส่งรูปที่ปิดชื่อแล้วและข้อมูลไปยัง NICU Sheet</p>
-        <button class="btn btn-primary btn-block" id="btnSync">Sync ไปยัง NICU Sheet</button>
-        <button class="btn btn-secondary btn-block" id="btnLoginToSync" style="display:none;">เข้าสู่ระบบเพื่อ sync</button>
+        <button class="btn btn-primary btn-block" id="btnSync">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4 4 0 0 1-1-7.9A5.5 5.5 0 0 1 16.8 8 4.5 4.5 0 0 1 17 17H7Z"/><path d="M12 12v6"/><path d="M9.5 14.5 12 12l2.5 2.5"/></svg>
+          Sync ไปยัง NICU Sheet
+        </button>
+        <button class="btn btn-secondary btn-block" id="btnLoginToSync" style="display:none;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>
+          เข้าสู่ระบบเพื่อ sync
+        </button>
         <p class="progress-line" id="syncStatusLine" style="display:none;"></p>
       </div>
       <div class="card text-center">
         <p class="hint">หรือบันทึกรูปที่ปิดชื่อแล้วไว้ในเครื่องแทน — ไฟล์จะถูกดาวน์โหลดลงเครื่องนี้โดยตรง ไม่มีการอัปโหลดใดๆ</p>
-        <button class="btn btn-secondary btn-block" id="btnExportPng">ดาวน์โหลดรูปที่ปิดชื่อแล้ว (.png)</button>
+        <button class="btn btn-secondary btn-block" id="btnExportPng">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M8 11.5 12 15l4-3.5"/><path d="M5 19h14"/></svg>
+          ดาวน์โหลดรูปที่ปิดชื่อแล้ว (.png)
+        </button>
       </div>
       <div class="card text-center" id="doneCard">
         <p class="hint">เสร็จสิ้นรายการนี้แล้ว?</p>
-        <button class="btn btn-primary btn-block" id="btnDone">เสร็จสิ้น — เริ่มผู้ป่วยรายถัดไป</button>
+        <button class="btn btn-primary btn-block" id="btnDone">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
+          เสร็จสิ้น — เริ่มผู้ป่วยรายถัดไป
+        </button>
       </div>
     </section>
 
   </main>
 
   <footer class="bottombar" style="display:none;">
-    <button class="btn btn-secondary btn-block" id="btnLogout">ออกจากระบบ</button>
+    <button class="btn btn-secondary btn-block" id="btnLogout">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8"/><path d="M10 12h10"/><path d="M17 8l4 4-4 4"/></svg>
+      ออกจากระบบ
+    </button>
   </footer>
 </div>
 
@@ -172,8 +233,14 @@
     <h2>ปิดชื่อแบบถาวรใช่หรือไม่?</h2>
     <p id="redactModalBody"></p>
     <div class="btn-row">
-      <button class="btn btn-secondary" id="btnRedactCancel">ยกเลิก</button>
-      <button class="btn btn-danger" id="btnRedactConfirm">ปิดทับและดำเนินการต่อ</button>
+      <button class="btn btn-secondary" id="btnRedactCancel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>
+        ยกเลิก
+      </button>
+      <button class="btn btn-danger" id="btnRedactConfirm">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        ปิดทับและดำเนินการต่อ
+      </button>
     </div>
   </div>
 </div>
@@ -183,6 +250,7 @@
 
 <!-- App modules, explicit load order -->
 <script src="codenames.js"></script>
+<script src="templates.js"></script>
 <script src="camera-capture.js"></script>
 <script src="canvas-annotator.js"></script>
 <script src="redactor.js"></script>

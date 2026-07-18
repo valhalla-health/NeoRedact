@@ -135,16 +135,6 @@ main {
   line-height: 1.5;
 }
 
-.capture-guide {
-  color: var(--ink-dim);
-  text-align: center;
-}
-.capture-guide svg {
-  max-width: 260px;
-  margin: 0 auto 8px;
-  display: block;
-}
-
 .btn {
   appearance: none;
   border: none;

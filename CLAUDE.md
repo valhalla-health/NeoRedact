@@ -23,6 +23,13 @@ reused codename on her side, this app never tracks that.
 - **Codename pool**: fixed 24 values, the NATO phonetic alphabet minus X-ray and Zulu
   (Alpha…Yankee) — see `codenames.js`. Identical list duplicated in
   `neoredact-sync/Code.gs`'s `CODENAMES` constant; keep both in sync if this ever changes.
+  Updated 2026-07-18: `Echo` and `November` were swapped for `Eagle` and `Nomad` — both
+  originals read too much like real chart content next to a codename (`Echo` = a cranial
+  ultrasound note nurses write routinely in the NICU, `November` = a DOB month), which
+  risked being misread as actual patient health data rather than an arbitrary label.
+  `neoredact-sync/Code.gs` lives in a separate repo not touched by this change — its
+  `CODENAMES` constant still needs the same `Echo`→`Eagle` / `November`→`Nomad` edit by
+  hand to stay in sync.
 - **Wizard step**: the "codename" step is the *first* step of the wizard (right after
   Login, before Capture) — nurse picks one of the 24 before she ever takes the photo, so
   every artifact produced downstream (redacted image, OCR results, local export, Sync
@@ -94,11 +101,14 @@ pixels), computed against the EXIF-corrected upright photo.
   `redact: true` region to continue, unchanged).
 - **Known limitation**: capture is still the OS-native camera app via
   `<input type="file" capture="environment">` (see `camera-capture.js`) — there is no live
-  in-app preview to show an alignment guide while shooting, only the existing static
-  `capture-guide` SVG shown beforehand. So the seeded boxes are only as accurate as how
-  closely the nurse's framing (distance, rotation, crop) matches the one reference photo
-  each template was measured from. Boxes were padded generously beyond the measured text/logo
-  bounds specifically to absorb this, and `redactor.js`'s own per-region padding adds further
+  in-app preview to show an alignment guide while shooting. (A static `capture-guide` SVG
+  used to be shown beforehand as a framing illustration; removed 2026-07-18 as a redundant
+  third card on the Capture step — the intro text and the template-select hint already
+  cover framing/labeling guidance, and the illustration added nothing the nurse acted on
+  before shooting.) So the seeded boxes are only as accurate as how closely the nurse's
+  framing (distance, rotation, crop) matches the one reference photo each template was
+  measured from. Boxes were padded generously beyond the measured text/logo bounds
+  specifically to absorb this, and `redactor.js`'s own per-region padding adds further
   margin on top — but a badly-off photo can still miss the target. This is why seeded regions
   stay fully editable rather than being "trusted" outright; there is deliberately no way to
   skip past Annotate without the nurse's eyes on the boxes.

@@ -49,6 +49,7 @@
     btnBackToCodenameFromCapture: document.getElementById('btnBackToCodenameFromCapture'),
     workCanvas: document.getElementById('workCanvas'),
     overlayCanvas: document.getElementById('overlayCanvas'),
+    zoomSurface: document.getElementById('zoomSurface'),
     regionList: document.getElementById('regionList'),
     btnRetakePhoto: document.getElementById('btnRetakePhoto'),
     btnGoRedact: document.getElementById('btnGoRedact'),
@@ -235,7 +236,7 @@
     if (!annotatorCtrl) {
       annotatorCtrl = NR.annotator.createAnnotator(el.workCanvas, el.overlayCanvas, {
         onChange: (regions) => { state.regions = regions; renderRegionList(); },
-      });
+      }, el.zoomSurface);
     } else {
       annotatorCtrl.reset();
       annotatorCtrl.syncOverlaySize();
@@ -263,32 +264,23 @@
       const row = document.createElement('div');
       row.className = 'region-row';
 
-      if (r.redact) {
-        // A redact box's label is never read (redactor.js ignores it, and
-        // ocr-engine.js filters redact regions out entirely) — no need to
-        // ask the nurse to name what's being blacked out. Template-seeded
-        // boxes still carry a label internally though (e.g. "KCMH logo" vs
-        // "Sticker (Name/HN/AN)") so when there's more than one auto-placed
-        // box on screen, the nurse can tell which is which while checking
-        // them — a hand-drawn box's label is always '' so it just falls
-        // back to the plain generic caption.
-        const staticLabel = document.createElement('span');
-        staticLabel.className = 'region-static-label';
-        staticLabel.textContent = r.label ? `พื้นที่ปิดทึบ: ${r.label}` : 'พื้นที่ปิดทึบ — ไม่ต้องตั้งชื่อ';
-        row.appendChild(staticLabel);
-      } else {
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.placeholder = 'ชื่อข้อมูล (เช่น HN, DOB)';
-        input.value = r.label;
-        input.addEventListener('input', () => annotatorCtrl.setLabel(r.id, input.value));
-        row.appendChild(input);
-      }
+      // A redact box's label is never read (redactor.js ignores it, and
+      // ocr-engine.js filters redact regions out entirely) — it's purely a
+      // display convenience so the nurse can tell boxes apart while
+      // checking them (e.g. template-seeded "KCMH logo" vs "Sticker"), so
+      // editing it here is optional. Left blank, it falls back to the
+      // generic "พื้นที่ปิดทึบ" caption instead of asking for a name.
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = r.redact ? 'พื้นที่ปิดทึบ' : 'ชื่อข้อมูล (เช่น HN, DOB)';
+      input.value = r.label;
+      input.addEventListener('input', () => annotatorCtrl.setLabel(r.id, input.value));
+      row.appendChild(input);
 
       const toggle = document.createElement('button');
       toggle.type = 'button';
       toggle.className = 'redact-toggle' + (r.redact ? ' on' : '');
-      toggle.textContent = r.redact ? 'ปิดทึบ' : 'อ่านค่า';
+      toggle.textContent = r.redact ? 'ปิดทึบทั้งหมด' : 'อ่านค่า';
       toggle.addEventListener('click', () => annotatorCtrl.toggleRedact(r.id));
 
       const remove = document.createElement('button');

@@ -20,9 +20,12 @@ is — only a codename. Praew keeps her own private mapping (codename + date -> 
 HN/AN/name) on her desktop, entirely outside this system; date is what disambiguates a
 reused codename on her side, this app never tracks that.
 
-- **Codename pool**: fixed 24 values, the NATO phonetic alphabet minus X-ray and Zulu
-  (Alpha…Yankee) — see `codenames.js`. Identical list duplicated in
-  `neoredact-sync/Code.gs`'s `CODENAMES` constant; keep both in sync if this ever changes.
+- **Codename pool**: fixed 24 values, the NATO phonetic alphabet minus X-ray and Echo
+  (Alpha…Zulu) — see `codenames.js`. Swapped 2026-07-20 (was minus X-ray and Zulu; Echo
+  dropped and Zulu added at the end, in alphabetical order). Identical list duplicated in
+  `neoredact-sync/Code.gs`'s `CODENAMES` constant; keep both in sync if this ever changes —
+  that file lives in the separate `neoredact-sync` repo and was not updated as part of the
+  2026-07-20 swap, so it still has the old pool until someone applies the same change there.
 - **Wizard step**: the "codename" step is the *first* step of the wizard (right after
   Login, before Capture) — nurse picks one of the 24 before she ever takes the photo, so
   every artifact produced downstream (redacted image, OCR results, local export, Sync
@@ -83,20 +86,21 @@ pixels), computed against the EXIF-corrected upright photo.
   the nurse can remove it and redraw, or toggle redact/read, same controls as always
   (`renderRegionList`). Nothing about the redact invariant changes: `redactor.js` still
   just blacks out whatever's in `state.regions` with `redact: true`, template-seeded or
-  not. One difference from a hand-drawn redact box: `renderRegionList` shows the seeded
-  region's label (e.g. "พื้นที่ปิดทึบ: KCMH logo") instead of the generic "ไม่ต้องตั้งชื่อ"
-  caption, since a template can place *two* redact boxes at once and the nurse needs to
-  tell them apart while checking — the label is still never read by `redactor.js` or
-  `ocr-engine.js`, purely a display convenience.
+  not. A seeded region also carries a pre-filled label (e.g. "KCMH logo" vs
+  "Sticker (Name/HN/AN)") in `renderRegionList`'s editable field, since a template can
+  place *two* redact boxes at once and the nurse needs to tell them apart while checking —
+  the label is still never read by `redactor.js` or `ocr-engine.js`, purely a display
+  convenience (see "Redact region labels now editable", 2026-07-20, below).
 - **Pages with no identifying fields aren't listed** — e.g. the Intake & Output Record page
   has no logo or sticker box on it at all, so it isn't a template option; `manual` is used
   for it same as the original single-label workflow (the wizard still requires at least one
   `redact: true` region to continue, unchanged).
 - **Known limitation**: capture is still the OS-native camera app via
   `<input type="file" capture="environment">` (see `camera-capture.js`) — there is no live
-  in-app preview to show an alignment guide while shooting, only the existing static
-  `capture-guide` SVG shown beforehand. So the seeded boxes are only as accurate as how
-  closely the nurse's framing (distance, rotation, crop) matches the one reference photo
+  in-app preview to show an alignment guide while shooting (the static example-framing card
+  that used to sit above the shutter button on the Capture step was removed 2026-07-20; see
+  "UI tweaks" below). So the seeded boxes are only as accurate as how closely the nurse's
+  framing (distance, rotation, crop) matches the one reference photo
   each template was measured from. Boxes were padded generously beyond the measured text/logo
   bounds specifically to absorb this, and `redactor.js`'s own per-region padding adds further
   margin on top — but a badly-off photo can still miss the target. This is why seeded regions
@@ -109,6 +113,43 @@ pixels), computed against the EXIF-corrected upright photo.
   load the photo, correct EXIF orientation, read off the logo/sticker box's pixel bounds, and
   divide by the corrected image's width/height to get the new `xPct/yPct/wPct/hPct`. Pad
   generously; err toward over-covering, never under-covering.
+
+## UI tweaks (added 2026-07-20)
+
+A batch of small UX changes to the Login, Capture, and Annotate steps, requested directly
+by Praew after using the app:
+
+- **Login hint shortened**: the paragraph above the Google Sign-In button on the Login step
+  now just reads "เข้าสู่ระบบเพื่อ sync" — the longer explanation (login is optional, works
+  offline, only needed at Sync) was cut for brevity. The full nuance still lives in this
+  file and in `renderSyncUI()`'s hint text at the Export step, which is where a nurse
+  actually hits the login-required moment.
+- **Capture-step example card removed**: the static SVG card showing an idealized framing of
+  the name/HN/DOB label (dashed outline + sample boxes) that used to sit above the shutter
+  button is gone, along with its now-unused `.capture-guide` CSS. The plain-text hint above
+  it (framing/lighting advice) stays.
+- **Annotate step: pinch-to-zoom**: `canvas-annotator.js` now distinguishes touch gestures
+  by finger count — one finger draws a redact/read box (unchanged behavior), a second finger
+  switches to a pinch-zoom/pan on the photo instead (implemented as a CSS `transform` on a
+  new `.zoom-surface` wrapper div around `workCanvas`/`overlayCanvas`, clamped to
+  1x–4x zoom). This is a pure view transform — region coordinates stay in image-pixel space
+  and `toImageCoords()` is unaffected, since it derives from the overlay canvas's *rendered*
+  bounding rect regardless of any zoom applied to it. Lets a nurse zoom in for a more precise
+  redact box on a small or far-away label without affecting the underlying pixel data. Ending
+  a pinch (lifting a finger back down to one) does not resume drawing with the remaining
+  finger — a fresh touch is required, to avoid an accidental box from a pinch release.
+- **Redact region labels now editable**: `renderRegionList` (`app.js`) used to show a
+  redact-flagged region's label as a static, non-editable span ("no need to name what's
+  being blacked out," since `redactor.js`/`ocr-engine.js` never read it). It's now an
+  ordinary text input, same as a read/OCR region's — the nurse can optionally type what's
+  under a given redact box (useful when a template seeds more than one, e.g. "KCMH logo" vs
+  "Sticker"). Left blank, the box's overlay caption and region-list placeholder both fall
+  back to the generic "พื้นที่ปิดทึบ" (was "ไม่ต้องตั้งชื่อ"). The redact-toggle button's
+  on-state label also changed from "ปิดทึบ" to "ปิดทึบทั้งหมด" for clarity. None of this
+  touches the privacy invariant — the label is still purely a display convenience, never
+  read by the redact or OCR code paths, and still never required for a redact region.
+- **Codename pool swap**: see "Codename pool" under "Codename identity model" above —
+  Echo replaced with Zulu.
 
 ## Stack
 

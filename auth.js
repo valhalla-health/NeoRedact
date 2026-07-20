@@ -67,10 +67,15 @@ window.NeoRedact = window.NeoRedact || {};
       container.textContent = 'ยังไม่ได้ตั้งค่า Google Sign-In บนอุปกรณ์นี้ — ใช้อีเมลและรหัสผ่านแทน';
       return;
     }
+    // Show something immediately — otherwise the container sits empty for up
+    // to the full poll window below, which reads as "the button is broken/
+    // gone" rather than "still loading" to a nurse on a slow or flaky
+    // hospital connection.
+    container.textContent = 'กำลังโหลด Google Sign-In…';
     let attempts = 0;
     function tryInit() {
       if (!(window.google && window.google.accounts && window.google.accounts.id)) {
-        if (++attempts > 40) { container.textContent = 'โหลด Google Sign-In ไม่สำเร็จ — ตรวจสอบการเชื่อมต่อ'; return; }
+        if (++attempts > 40) { container.textContent = 'โหลด Google Sign-In ไม่สำเร็จ — ตรวจสอบการเชื่อมต่อ หรือใช้อีเมลและรหัสผ่านแทนด้านล่าง'; return; }
         setTimeout(tryInit, 250);
         return;
       }

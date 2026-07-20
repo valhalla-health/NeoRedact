@@ -1,17 +1,21 @@
 # NeoRedact
 
-Offline PWA: nurse photographs a patient label, blacks out the name on-device, OCRs the
-remaining labeled fields (Thai+English), and lets the redacted photo be downloaded locally.
-Redaction and OCR are fully local — the raw, pre-redaction photo and the name never leave
-the phone, ever. The
-already-redacted result can optionally sync to a central NICU Sheet (see "Sync" below);
-that's the only network traffic this app ever generates.
+Offline PWA: nurse photographs a patient label, blacks out the name on-device, manually
+transcribes the remaining labeled fields (Thai+English) into text, and lets the redacted
+photo be downloaded locally. A nurse can capture several photos in a row under the same
+codename (e.g. multiple chart pages for one patient) without re-picking it each time — see
+"Multiple photos per codename" below. Redaction is fully local — the raw, pre-redaction
+photo and the name never leave the phone, ever. The already-redacted result can optionally
+sync to a central NICU Sheet (see "Sync" below); that's the only network traffic this app
+ever generates.
 
 ## Status
 
-Core redact+OCR flow (v1) done. Phase 1 sync to `nicu-tools/neoredact-sync` (GAS backend)
-is now wired in — see "Sync" section below. Codename identity model + read-only dashboard
-(`dashboard.html`) landed 2026-07-16 — see "Codename identity model" below.
+Core redact + manual field-entry flow (v1) done. Local on-device OCR (Tesseract.js) was
+tried and removed 2026-07-20 — see "Local OCR removed" below; a nurse now types field
+values by hand on the Review step instead. Phase 1 sync to `nicu-tools/neoredact-sync` (GAS
+backend) is wired in — see "Sync" section below. Codename identity model + read-only
+dashboard (`dashboard.html`) landed 2026-07-16 — see "Codename identity model" below.
 
 ## Codename identity model (added 2026-07-16)
 
@@ -28,15 +32,18 @@ reused codename on her side, this app never tracks that.
   2026-07-20 swap, so it still has the old pool until someone applies the same change there.
 - **Wizard step**: the "codename" step is the *first* step of the wizard (right after
   Login, before Capture) — nurse picks one of the 24 before she ever takes the photo, so
-  every artifact produced downstream (redacted image, OCR results, local export, Sync
-  payload) is already tagged. Moved 2026-07-17 from its original position between Review
-  and Export; Review's "ส่งออก" button now goes straight to Export since the codename was
-  already picked at the start of the run. Back-navigation follows the new order: Codename
-  back to Login, Capture back to Codename, Export back to Review.
+  every artifact produced downstream (redacted image, manually-typed field values, local
+  export, Sync payload) is already tagged. Moved 2026-07-17 from its original position
+  between Review and Export; Review's "ส่งออก" button now goes straight to Export since the
+  codename was already picked at the start of the run. Back-navigation follows the new
+  order: Codename back to Login, Capture back to Codename, Export back to Review. As of
+  2026-07-20, a nurse can also loop Export → Capture directly for another photo under the
+  *same* codename — see "Multiple photos per codename" below; only the explicit "เสร็จสิ้น"
+  button on Export clears the codename and returns to this step.
 - **HN/DOB never reach the cloud**: `sync.js` strips any field labeled HN/DOB/name/AN
   (`IDENTIFYING_FIELD_KEYS`) before building the sync payload; `Code.gs`'s
   `stripIdentifyingFields_` independently re-filters server-side — defense in depth, same
-  pattern as the redact-before-OCR guard. The `Submissions` sheet has no HN/DOB/name
+  pattern as the privacy invariant below. The `Submissions` sheet has no HN/DOB/name
   column at all (replaced by `codename`).
 - **Drive layout**: `NeoRedact Submissions/<codename>/<yyyy-MM-dd>/<syncId>.jpg` — one
   folder per codename, dated subfolder inside. (Changed from the old flat
@@ -89,8 +96,8 @@ pixels), computed against the EXIF-corrected upright photo.
   not. A seeded region also carries a pre-filled label (e.g. "KCMH logo" vs
   "Sticker (Name/HN/AN)") in `renderRegionList`'s editable field, since a template can
   place *two* redact boxes at once and the nurse needs to tell them apart while checking —
-  the label is still never read by `redactor.js` or `ocr-engine.js`, purely a display
-  convenience (see "Redact region labels now editable", 2026-07-20, below).
+  the label is still never read by `redactor.js` or fed into `state.results`, purely a
+  display convenience (see "Redact region labels now editable", 2026-07-20, below).
 - **Pages with no identifying fields aren't listed** — e.g. the Intake & Output Record page
   has no logo or sticker box on it at all, so it isn't a template option; `manual` is used
   for it same as the original single-label workflow (the wizard still requires at least one
@@ -140,16 +147,79 @@ by Praew after using the app:
   finger — a fresh touch is required, to avoid an accidental box from a pinch release.
 - **Redact region labels now editable**: `renderRegionList` (`app.js`) used to show a
   redact-flagged region's label as a static, non-editable span ("no need to name what's
-  being blacked out," since `redactor.js`/`ocr-engine.js` never read it). It's now an
-  ordinary text input, same as a read/OCR region's — the nurse can optionally type what's
-  under a given redact box (useful when a template seeds more than one, e.g. "KCMH logo" vs
-  "Sticker"). Left blank, the box's overlay caption and region-list placeholder both fall
+  being blacked out," since `redactor.js` never read it). It's now an ordinary text input,
+  same as a field/read region's — the nurse can optionally type what's under a given redact
+  box (useful when a template seeds more than one, e.g. "KCMH logo" vs "Sticker"). Left
+  blank, the box's overlay caption and region-list placeholder both fall
   back to the generic "พื้นที่ปิดทึบ" (was "ไม่ต้องตั้งชื่อ"). The redact-toggle button's
   on-state label also changed from "ปิดทึบ" to "ปิดทึบทั้งหมด" for clarity. None of this
   touches the privacy invariant — the label is still purely a display convenience, never
-  read by the redact or OCR code paths, and still never required for a redact region.
+  read by the redact step or fed into `state.results`, and still never required for a
+  redact region.
 - **Codename pool swap**: see "Codename pool" under "Codename identity model" above —
   Echo replaced with Zulu.
+
+## Local OCR removed (2026-07-20)
+
+Tesseract.js on-device OCR was the original v1 approach for turning HN/DOB/ward/etc.
+fields into text, but recognition quality on real chart photos (handwriting, glare,
+low-contrast printed labels) was bad enough that nurses couldn't rely on it — it was
+retried, reviewed, and generally slower than just typing the value. Removed entirely
+rather than kept as an optional assist, to avoid maintaining a large, unreliable
+dependency for a feature nobody trusted.
+
+- **Removed**: `ocr-engine.js`, `vendor/tesseract/` (~17MB of vendored Tesseract.js
+  core/worker/wasm/traineddata — see the old "Offline OCR engine" section this replaces),
+  the `<script src="vendor/tesseract/tesseract.min.js">` and `<script src="ocr-engine.js">`
+  tags in `index.html`, and the standalone "OCR progress" wizard step (`step-ocr` /
+  `runOcr()`). `sw.js`'s OCR cache tier (`OCR_CACHE`/`OCR_FILES`) is gone too — one cache
+  tier now, `CACHE_VERSION` bumped to `v7` so existing installs drop the old ~17MB cache on
+  next activate.
+- **Replacement flow**: `btnRedactConfirm`'s click handler (`app.js`) used to call
+  `runOcr()` and route through the OCR step; it now builds `state.results` directly —
+  `state.regions.filter(r => !r.redact).map(r => ({id, label, text: ''}))` — and goes
+  straight to Review. The Review step's fields (`renderResults`) were always plain
+  `<textarea>`s the nurse could edit (originally to *correct* OCR's guess); now they just
+  start blank with a "พิมพ์ค่าที่เห็นในรูป" placeholder and she fills them in from scratch.
+  The per-field "อ่านซ้ำอีกครั้ง" (re-run OCR on this region) retry button is gone along
+  with it — nothing left to retry.
+- **Everything downstream is unchanged**: `state.results`' shape (`{id, label, text}`) is
+  identical to what OCR used to produce, so `export.js` and `sync.js` (and the Sheet
+  columns / dashboard on the backend) needed zero changes — they never cared where `text`
+  came from.
+- **Wizard step count dropped from 6 to 5** (`codename, capture, annotate, review, export`)
+  — update anything that assumed the old 6-step numbering (the step badge, this file's own
+  step comments in `index.html`).
+- **Privacy invariant simplified, not weakened**: with no OCR pass, there's no longer a
+  separate "does this data-extraction step also get to see the pre-redaction image"
+  question to defend against — see the rewritten "Privacy invariant" section below. The
+  core guarantee (one working canvas, redact-before-any-output, no raw photo ever leaves
+  the device) is unchanged.
+
+## Multiple photos per codename (2026-07-20)
+
+Previously the only way to capture a second photo for the same patient was to finish the
+whole flow and start over from Codename, re-picking the same value from the grid. Now
+there's a direct loop back to Capture that keeps the codename:
+
+- **New button** on the Export step, `btnAddAnotherPhoto` ("ถ่ายรูปเพิ่มสำหรับรหัสนี้") —
+  calls a new `resetPhotoState()` (`app.js`) that clears everything about the *current
+  photo* (`state.regions`, `state.results`, `state.redacted`, `state.artifactId`, the
+  annotator, the working canvas) but leaves `state.codename` and `state.templateId` alone,
+  then jumps straight to the Capture step. `resetAll()` (the existing "เสร็จสิ้น — เริ่ม
+  ผู้ป่วยรายถัดไป" button, `btnDone`) now calls the same `resetPhotoState()` plus clears
+  `state.codename` and `state.photoCount` — the two buttons share the per-photo cleanup
+  logic and differ only in whether the codename survives.
+- **`state.photoCount`**: increments once per successful redact (in `btnRedactConfirm`),
+  reset to 0 only by `resetAll()`. Shown on the Export step via `photoCountHint` ("รูปที่ N
+  สำหรับรหัส {codename}") so the nurse has a visible confirmation she's still on the same
+  patient across multiple captures, not a per-app-lifetime counter.
+- **No backend changes needed**: multiple photos under one codename were already
+  representable — Drive's `<codename>/<yyyy-MM-dd>/<syncId>.jpg` layout and the
+  `Submissions` sheet both key by `syncId` per photo, grouped by `codename` (see "Codename
+  identity model" above and the dashboard's grouped table). This feature is purely a
+  client-side navigation shortcut to reach that same end state without re-selecting the
+  codename each time.
 
 ## Stack
 
@@ -160,52 +230,33 @@ these need internet on first load only; already-cached fonts are not required fo
 offline guarantee since the app is legible without them.
 
 **Why not React here:** this app is a strictly linear wizard, and its central operation is
-a destructive, imperative canvas pixel mutation (blackout) that must complete before OCR
-ever runs. Framework re-renders touching the same canvas would risk silently undoing or
-bypassing the blackout — an unacceptable risk for a tool whose entire purpose is a privacy
-guarantee. Plain DOM + canvas removes that risk class entirely.
+a destructive, imperative canvas pixel mutation (blackout) that must complete before the
+redacted photo is ever shown, exported, or synced. Framework re-renders touching the same
+canvas would risk silently undoing or bypassing the blackout — an unacceptable risk for a
+tool whose entire purpose is a privacy guarantee. Plain DOM + canvas removes that risk
+class entirely.
 
 ## Privacy invariant — do not violate when editing this code
 
-Redact-before-OCR, redact-before-export, never-whole-image-OCR, never-retain-original:
+Redact-before-any-output, never-retain-original:
 
 - There is exactly one working canvas/ImageData for the photo. No clone of the
   pre-redaction pixels is ever kept alive past the redact step.
-- The wizard state machine (`app.js`) will not allow entry to the OCR step until a
-  `redacted = true` flag is set by `redactor.js`. `ocr-engine.js` independently re-checks
-  this flag and throws if it is not set — defense in depth, not just a UI gate.
-- OCR only ever receives per-region crops built from the already-redacted canvas — never
-  the full image — so a hypothetical bug in the blackout logic still can't leak the name
-  region into OCR.
+- The wizard state machine (`app.js`) will not allow entry to the Review step until a
+  `redacted = true` flag is set by `redactor.js` (`btnRedactConfirm`'s handler sets it
+  immediately after `applyRedaction()` returns, before anything else touches the canvas).
 - Zero network calls involving the **pre-redaction** image or the name, ever, under any
   code path. `sync.js` is the one intentional exception to "no network calls at all" — it
-  only ever reads from the already-redacted canvas and the reviewed OCR results (same data
-  `export.js` would download locally), never the original. If you touch `sync.js`, keep it
-  that way: it must not gain access to anything upstream of the redact step.
+  only ever reads from the already-redacted canvas and the reviewed, manually-typed field
+  values (same data `export.js` would download locally), never the original. If you touch
+  `sync.js`, keep it that way: it must not gain access to anything upstream of the redact
+  step.
 - The raw pre-redaction photo is never exported, uploaded, or persisted under any code
   path. Only the already-redacted canvas can be serialized or synced.
-
-## Offline OCR engine (vendored, not CDN)
-
-`vendor/tesseract/` holds Tesseract.js core + worker + wasm + `tha.traineddata.gz` /
-`eng.traineddata.gz`, fetched once during development and committed locally so the app's
-very first load is same-origin and reliably cacheable by the service worker — no runtime
-dependency on jsdelivr/unpkg, even on first run.
-
-- Tesseract.js version pinned: **5.1.1** (`tesseract.js` + `tesseract.js-core`, npm)
-- Files vendored: `tesseract.min.js`, `worker.min.js` (from `tesseract.js/dist`);
-  `tesseract-core-lstm.wasm(.js)` + `tesseract-core-simd-lstm.wasm(.js)` (from
-  `tesseract.js-core` — both SIMD and non-SIMD variants, since the worker feature-detects
-  and picks one at runtime; we only vendor the LSTM-only build since `ocr-engine.js` calls
-  `createWorker(lang, 1, ...)`, OEM 1 = LSTM only, no legacy engine needed)
-- Traineddata: `eng.traineddata.gz` + `tha.traineddata.gz`, fetched from
-  `https://cdn.jsdelivr.net/npm/@tesseract.js-data/<lang>/4.0.0_best_int/<lang>.traineddata.gz`
-  (the same source Tesseract.js would hit by default) — this is the "best_int" (LSTM)
-  variant matching OEM 1.
-- Re-vendoring later: `npm install tesseract.js@<ver> tesseract.js-core@<ver>` somewhere
-  scratch, copy the same file set out of `dist`/package root into `vendor/tesseract/`,
-  re-download traineddata if the data version changes, bump the version noted above, bump
-  `CACHE_VERSION` in `sw.js` so clients pick up the new files.
+- There used to be a second guard here specific to the (now-removed) OCR pass — see "Local
+  OCR removed" above. With no data-extraction step reading the canvas at all anymore, the
+  remaining surface to audit is just: redact, then display/export/sync from that same
+  canvas. Keep it that simple if a future feature reads pixels from the canvas again.
 
 ## Sync + login (Phase 1 collection — `sync.js` + `auth.js`)
 
@@ -218,8 +269,9 @@ secret anywhere in this app — a hardcoded token in public source doesn't hold 
 `auth.js` handles per-nurse login (Google Sign-In, or email/password for nurses without a
 Google account) against `neoredact-sync`, which issues a session token. `sync.js` sends that
 session token with every submission instead. Login is **optional up front** — the login step
-has a "Skip for now" button, since redaction and OCR must keep working fully offline without
-an account; a session is only required at the moment of actually hitting Sync.
+has a "Skip for now" button, since redaction and manual field entry must keep working fully
+offline without an account; a session is only required at the moment of actually hitting
+Sync.
 
 - **Config**: `index.html`'s config block has `NEOREDACT_GAS_URL` (the deployed
   `neoredact-sync` URL) and `NEOREDACT_CLIENT_ID` (a Google OAuth Client ID — see
@@ -227,10 +279,11 @@ an account; a session is only required at the moment of actually hitting Sync.
 - **Session**: `auth.js` stores `{name, role, email, token}` in `sessionStorage` (not
   `localStorage` — clears when the browser fully closes, the right call for a shared/BYOD
   device) under `neoredact_session_v1`.
-- **What gets sent**: the already-redacted canvas (JPEG, base64) + the reviewed field
-  labels/text from the OCR step (minus anything HN/DOB/name-labeled — see "Codename
-  identity model") + the selected codename + a client-generated `syncId` (UUID) + the
-  session token. Nothing upstream of the redact step is ever touched by either module.
+- **What gets sent**: the already-redacted canvas (JPEG, base64) + the reviewed,
+  manually-typed field labels/text from the Review step (minus anything HN/DOB/name-labeled
+  — see "Codename identity model") + the selected codename + a client-generated `syncId`
+  (UUID) + the session token. Nothing upstream of the redact step is ever touched by either
+  module.
 - **Offline handling**: `sync.js` keeps a `localStorage` retry queue
   (`neoredact_sync_queue_v1`). A failed POST (no connection, GAS down, expired session)
   queues the payload instead of losing it; the queue flushes automatically on page load and
@@ -246,14 +299,22 @@ an account; a session is only required at the moment of actually hitting Sync.
   ships with. See `nicu-tools/neoredact-sync/README.md`'s Security section for the rest.
 - **Phase 2 placeholder**: the Sheet has `ocr_status` / `ocr_data_json` columns reserved for
   a future Claude-vision pass over the handwritten fields — not built, gated on hospital
-  approval. Nothing in this app or the backend calls any AI API today.
+  approval. Nothing in this app or the backend calls any AI API today. This server-side,
+  gated idea is unrelated to (and unaffected by) the on-device Tesseract.js OCR removed
+  2026-07-20 — see "Local OCR removed" above; if it's ever built, it'd be the only
+  automated field-extraction path left, since the client no longer has one at all.
 
 ## Known limitation: iOS Safari cache eviction
 
 iOS can evict a PWA's Cache Storage / service worker after ~7 days of disuse. The "works
 offline after install" guarantee can silently break on a phone that hasn't opened the app
-in a while. `ocr-engine.js` should detect a failed/missing cached engine and show a clear
-"reconnect to Wi-Fi to refresh the OCR engine" message rather than fail silently or crash.
+in a while. `app.js`'s `swStatus` indicator (bottom of the file) already covers this
+generically — it shows a "กำลังเตรียมแอปสำหรับใช้งานออฟไลน์" message until
+`serviceWorker.ready` resolves, and a failure message if registration itself fails. This
+used to be a bigger risk when the cache included the ~17MB Tesseract.js tier (see "Local
+OCR removed" above); the app shell alone is much smaller and faster to re-cache, but the
+underlying eviction behavior is unchanged, so don't assume "works offline" without
+re-testing per the protocol below after a period of disuse.
 
 ## Local testing
 
@@ -268,11 +329,14 @@ Then on a phone on the same LAN: `http://<dev-machine-LAN-IP>:8000/`.
 **Offline test protocol (the core requirement — always run this before shipping a
 change):**
 1. Fresh load over Wi-Fi.
-2. Run one full capture → redact → OCR → export cycle (warms both SW caches).
+2. Run one full capture → redact → review (manually type a field) → export cycle (warms
+   the SW cache).
 3. Enable Airplane Mode.
 4. Fully close the app from the app switcher (not just backgrounded).
 5. Relaunch from the home-screen icon, still in airplane mode.
-6. Run a full cycle again — OCR must still produce results and export must still download.
+6. Run a full cycle again — capture, redact, type field values, and export must all still
+   work. Also try "ถ่ายรูปเพิ่มสำหรับรหัสนี้" to capture a second photo under the same
+   codename without leaving airplane mode.
 
 Also: watch the Network tab through a full session and confirm zero outgoing requests
 after the initial load.

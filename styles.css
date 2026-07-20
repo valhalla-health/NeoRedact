@@ -268,16 +268,6 @@ canvas#overlayCanvas {
   outline: none;
 }
 
-.field-result .retry-btn {
-  align-self: flex-end;
-  font-size: 12px;
-  background: transparent;
-  border: none;
-  color: var(--accent);
-  cursor: pointer;
-  padding: 2px 4px;
-}
-
 .progress-line {
   font-size: 13px;
   color: var(--accent);

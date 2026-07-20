@@ -30,7 +30,7 @@
 <div id="app">
   <header class="topbar">
     <h1>NeoRedact</h1>
-    <span class="step-badge" id="stepBadge">1 / 6 · เลือกรหัส</span>
+    <span class="step-badge" id="stepBadge">1 / 5 · เลือกรหัส</span>
   </header>
 
   <main>
@@ -58,7 +58,7 @@
           </button>
         </div>
         <p class="badge-danger" id="loginError" style="display:none;"></p>
-        <button class="skip-link" id="btnSkipLogin">ข้ามไปก่อน (ปิดชื่อ/OCR เท่านั้น ไม่ sync)</button>
+        <button class="skip-link" id="btnSkipLogin">ข้ามไปก่อน (ปิดชื่อเท่านั้น ไม่ sync)</button>
       </div>
     </section>
 
@@ -141,20 +141,13 @@
       </div>
     </section>
 
-    <!-- Step 4: OCR progress -->
-    <section class="step" id="step-ocr">
-      <div class="card">
-        <img class="thumb-preview" id="redactedThumb" alt="ตัวอย่างรูปที่ปิดชื่อแล้ว" />
-      </div>
-      <div class="card">
-        <p class="progress-line" id="ocrProgressLine">กำลังอ่านข้อมูล…</p>
-      </div>
-    </section>
-
-    <!-- Step 5: Review -->
+    <!-- Step 4: Review -->
     <section class="step" id="step-review">
       <div class="card">
         <img class="thumb-preview" id="reviewThumb" alt="ตัวอย่างรูปที่ปิดชื่อแล้ว" />
+      </div>
+      <div class="card">
+        <p class="hint">กรอกข้อมูลแต่ละช่องด้วยตนเองตามที่เห็นในรูป (ไม่มีการอ่านค่าอัตโนมัติ)</p>
       </div>
       <div class="region-list" id="resultList"></div>
       <div class="btn-row">
@@ -173,7 +166,7 @@
       </button>
     </section>
 
-    <!-- Step 6: Export -->
+    <!-- Step 5: Export -->
     <section class="step" id="step-export">
       <button class="btn btn-secondary btn-block" id="btnBackToReviewFromExport">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/></svg>
@@ -199,7 +192,11 @@
         </button>
       </div>
       <div class="card text-center" id="doneCard">
-        <p class="hint">เสร็จสิ้นรายการนี้แล้ว?</p>
+        <p class="hint" id="photoCountHint"></p>
+        <button class="btn btn-secondary btn-block" id="btnAddAnotherPhoto">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.5"/><path d="M12 10.5v2m-1-1h2"/></svg>
+          ถ่ายรูปเพิ่มสำหรับรหัสนี้
+        </button>
         <button class="btn btn-primary btn-block" id="btnDone">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
           เสร็จสิ้น — เริ่มผู้ป่วยรายถัดไป
@@ -234,16 +231,12 @@
   </div>
 </div>
 
-<!-- Vendored offline OCR engine (no CDN — see CLAUDE.md) -->
-<script src="vendor/tesseract/tesseract.min.js"></script>
-
 <!-- App modules, explicit load order -->
 <script src="codenames.js"></script>
 <script src="templates.js"></script>
 <script src="camera-capture.js"></script>
 <script src="canvas-annotator.js"></script>
 <script src="redactor.js"></script>
-<script src="ocr-engine.js"></script>
 <script src="export.js"></script>
 <script src="auth.js"></script>
 <script src="sync.js"></script>

@@ -1,14 +1,15 @@
 // Wizard controller. Owns the one piece of state that must never be faked:
-// `state.redacted`. Nothing can reach the OCR step until it, and
-// ocr-engine.js independently re-checks it too (see CLAUDE.md).
+// `state.redacted`. Nothing can reach the Review step until it, and
+// redactor.js's own caller (see below) never lets a region's pixels reach
+// anywhere else beforehand (see CLAUDE.md).
 (function () {
   'use strict';
 
   const NR = window.NeoRedact;
 
-  const steps = ['codename', 'capture', 'annotate', 'ocr', 'review', 'export'];
+  const steps = ['codename', 'capture', 'annotate', 'review', 'export'];
   const stepLabels = {
-    codename: 'เลือกรหัส', capture: 'ถ่ายรูป', annotate: 'ทำเครื่องหมาย', ocr: 'กำลังอ่าน',
+    codename: 'เลือกรหัส', capture: 'ถ่ายรูป', annotate: 'ทำเครื่องหมาย',
     review: 'ตรวจสอบ', export: 'ส่งออก',
   };
 
@@ -19,6 +20,7 @@
     codename: '',
     templateId: 'manual', // which KCMH page template (if any) auto-seeds redact boxes
     artifactId: '', // one id per photo — see btnRedactConfirm handler
+    photoCount: 0, // photos captured for the current codename this session — see btnAddAnotherPhoto
     pendingReturnStep: null, // where to go after a login triggered mid-flow
   };
 
@@ -57,8 +59,6 @@
     redactModalBody: document.getElementById('redactModalBody'),
     btnRedactCancel: document.getElementById('btnRedactCancel'),
     btnRedactConfirm: document.getElementById('btnRedactConfirm'),
-    redactedThumb: document.getElementById('redactedThumb'),
-    ocrProgressLine: document.getElementById('ocrProgressLine'),
     reviewThumb: document.getElementById('reviewThumb'),
     resultList: document.getElementById('resultList'),
     btnBackToAnnotate: document.getElementById('btnBackToAnnotate'),
@@ -70,6 +70,8 @@
     btnSync: document.getElementById('btnSync'),
     syncStatusLine: document.getElementById('syncStatusLine'),
     btnExportPng: document.getElementById('btnExportPng'),
+    photoCountHint: document.getElementById('photoCountHint'),
+    btnAddAnotherPhoto: document.getElementById('btnAddAnotherPhoto'),
     btnDone: document.getElementById('btnDone'),
   };
 
@@ -96,7 +98,7 @@
     el.btnLogout.style.display = session ? 'block' : 'none';
   }
 
-  // --- Step 0: Login (optional — redact/OCR work fully offline without it) --
+  // --- Step 0: Login (optional — redact/field-entry work fully offline without it) --
 
   let googleButtonRendered = false;
 
@@ -162,8 +164,8 @@
   // --- Step 1 (shown first): Codename --------------------------------------
   // The only patient identifier that ever leaves the device — a fixed pool of
   // 24, no real name/HN/DOB attached. Picked before Capture so every artifact
-  // produced downstream (redacted image, OCR results, local export, Sync
-  // payload) is already tagged. See codenames.js / CLAUDE.md.
+  // produced downstream (redacted image, manually-typed field values, local
+  // export, Sync payload) is already tagged. See codenames.js / CLAUDE.md.
 
   function renderCodenameGrid() {
     el.codenameGrid.innerHTML = '';
@@ -264,12 +266,13 @@
       const row = document.createElement('div');
       row.className = 'region-row';
 
-      // A redact box's label is never read (redactor.js ignores it, and
-      // ocr-engine.js filters redact regions out entirely) — it's purely a
-      // display convenience so the nurse can tell boxes apart while
-      // checking them (e.g. template-seeded "KCMH logo" vs "Sticker"), so
-      // editing it here is optional. Left blank, it falls back to the
-      // generic "พื้นที่ปิดทึบ" caption instead of asking for a name.
+      // A redact box's label is never read (redactor.js ignores it, and the
+      // redact-confirm handler below filters redact regions out of
+      // state.results entirely) — it's purely a display convenience so the
+      // nurse can tell boxes apart while checking them (e.g. template-seeded
+      // "KCMH logo" vs "Sticker"), so editing it here is optional. Left
+      // blank, it falls back to the generic "พื้นที่ปิดทึบ" caption instead
+      // of asking for a name.
       const input = document.createElement('input');
       input.type = 'text';
       input.placeholder = r.redact ? 'พื้นที่ปิดทึบ' : 'ชื่อข้อมูล (เช่น HN, DOB)';
@@ -294,8 +297,8 @@
     });
 
     const hasRedactRegion = state.regions.some((r) => r.redact);
-    const ocrRegions = state.regions.filter((r) => !r.redact);
-    const allLabeled = ocrRegions.every((r) => r.label && r.label.trim());
+    const fieldRegions = state.regions.filter((r) => !r.redact);
+    const allLabeled = fieldRegions.every((r) => r.label && r.label.trim());
     el.btnGoRedact.disabled = !(hasRedactRegion && allLabeled);
   }
 
@@ -303,9 +306,9 @@
 
   el.btnGoRedact.addEventListener('click', () => {
     const redactCount = state.regions.filter((r) => r.redact).length;
-    const ocrCount = state.regions.length - redactCount;
+    const fieldCount = state.regions.length - redactCount;
     el.redactModalBody.textContent =
-      `การดำเนินการนี้จะปิดทับถาวร ${redactCount} ตำแหน่ง และอ่านค่า ${ocrCount} ตำแหน่งเป็นข้อความ ` +
+      `การดำเนินการนี้จะปิดทับถาวร ${redactCount} ตำแหน่ง และเปิดให้กรอกข้อมูล ${fieldCount} ตำแหน่งด้วยตนเอง ` +
       `การปิดทับไม่สามารถย้อนกลับได้ ดำเนินการต่อหรือไม่?`;
     el.redactModalBackdrop.classList.add('active');
   });
@@ -314,7 +317,7 @@
     el.redactModalBackdrop.classList.remove('active');
   });
 
-  el.btnRedactConfirm.addEventListener('click', async () => {
+  el.btnRedactConfirm.addEventListener('click', () => {
     el.redactModalBackdrop.classList.remove('active');
 
     // The invariant step: mutate the one working canvas in place. No copy of
@@ -325,37 +328,17 @@
     // artifact (local export filenames/content and the eventual sync
     // payload) so they can all be cross-referenced against each other.
     state.artifactId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
+    state.photoCount += 1;
     annotatorCtrl.redrawOverlay(); // regions still shown as outlines; pixels underneath are now black
 
-    const redactedDataUrl = el.workCanvas.toDataURL('image/png');
-    el.redactedThumb.src = redactedDataUrl;
-
-    showStep('ocr');
-    await runOcr();
+    // No OCR anymore — the nurse types each non-redact field's value by hand
+    // on the Review step, starting from a blank textarea per region.
+    state.results = state.regions.filter((r) => !r.redact).map((r) => ({ id: r.id, label: r.label, text: '' }));
+    renderResults();
+    showStep('review');
   });
 
-  // --- Step 4: OCR ---------------------------------------------------
-
-  async function runOcr() {
-    el.ocrProgressLine.textContent = 'กำลังเริ่มเครื่องมือ OCR…';
-    try {
-      const results = await NR.ocrEngine.recognizeRegions(el.workCanvas, state.regions, {
-        redacted: state.redacted, // must be true — set only by the confirm handler above
-        lang: 'tha+eng',
-        onProgress: ({ index, total, label }) => {
-          el.ocrProgressLine.textContent = `กำลังอ่าน "${label}" (${index + 1}/${total})…`;
-        },
-      });
-      state.results = results;
-      renderResults();
-      showStep('review');
-    } catch (err) {
-      el.ocrProgressLine.textContent = 'OCR ล้มเหลว: ' + err.message +
-        ' — หากเป็นการใช้งานครั้งแรก แอปอาจต้องเชื่อมต่อ Wi-Fi หนึ่งครั้งเพื่อเตรียมเครื่องมือ OCR แบบออฟไลน์';
-    }
-  }
-
-  // --- Step 5: Review ---------------------------------------------------
+  // --- Step 4: Review ---------------------------------------------------
 
   function renderResults() {
     el.reviewThumb.src = el.workCanvas.toDataURL('image/png');
@@ -369,25 +352,10 @@
 
       const textarea = document.createElement('textarea');
       textarea.value = r.text;
+      textarea.placeholder = 'พิมพ์ค่าที่เห็นในรูป';
       textarea.addEventListener('input', () => { r.text = textarea.value; });
 
-      const retry = document.createElement('button');
-      retry.type = 'button';
-      retry.className = 'retry-btn';
-      retry.textContent = 'อ่านซ้ำอีกครั้ง';
-      retry.addEventListener('click', async () => {
-        retry.textContent = 'กำลังอ่าน…';
-        const region = state.regions.find((reg) => reg.id === r.id);
-        const [single] = await NR.ocrEngine.recognizeRegions(el.workCanvas, [region], {
-          redacted: state.redacted,
-          lang: 'tha+eng',
-        });
-        r.text = single.text;
-        textarea.value = single.text;
-        retry.textContent = 'อ่านซ้ำอีกครั้ง';
-      });
-
-      wrap.append(label, textarea, retry);
+      wrap.append(label, textarea);
       el.resultList.appendChild(wrap);
     });
   }
@@ -398,9 +366,14 @@
     showStep('export');
     el.syncStatusLine.style.display = 'none';
     renderSyncUI();
+    renderPhotoCountHint();
   });
 
-  // --- Step 6: Export ---------------------------------------------------
+  // --- Step 5: Export ---------------------------------------------------
+
+  function renderPhotoCountHint() {
+    el.photoCountHint.textContent = `รูปที่ ${state.photoCount} สำหรับรหัส ${state.codename} — ถ่ายเพิ่มได้หากผู้ป่วยรายนี้มีหลายหน้า/หลายรูป`;
+  }
 
   function renderSyncUI() {
     if (!NR.sync.isConfigured()) {
@@ -449,37 +422,52 @@
 
   el.btnBackToReviewFromExport.addEventListener('click', () => showStep('review'));
   el.btnExportPng.addEventListener('click', () => NR.exportModule.exportRedactedPng(el.workCanvas, state.codename, state.artifactId));
-  el.btnDone.addEventListener('click', resetAll);
 
-  function resetAll() {
+  // Clears everything about the *current photo* — regions, results, the
+  // working canvas — without touching state.codename or state.photoCount,
+  // so a nurse can capture several photos in a row for the same patient
+  // (e.g. multiple chart pages) without re-picking the codename each time.
+  function resetPhotoState() {
     state.redacted = false;
     state.regions = [];
     state.results = [];
-    state.codename = '';
     state.artifactId = '';
     if (annotatorCtrl) annotatorCtrl.reset();
     const ctx = el.workCanvas.getContext('2d');
     ctx.clearRect(0, 0, el.workCanvas.width, el.workCanvas.height);
+  }
+
+  el.btnAddAnotherPhoto.addEventListener('click', () => {
+    resetPhotoState();
+    showStep('capture');
+  });
+
+  el.btnDone.addEventListener('click', resetAll);
+
+  function resetAll() {
+    resetPhotoState();
+    state.codename = '';
+    state.photoCount = 0;
     showStep('codename');
   }
 
   showStep(NR.auth.getSession() ? 'codename' : 'login');
 
-  // First-run (or cache-cleared) offline-engine warm-up indicator. The service
-  // worker's install step precaches both the app shell and the ~15-20MB OCR
-  // engine tier before it activates, so `serviceWorker.ready` resolving is a
-  // reliable signal that the one-time download has finished — see sw.js.
+  // First-run (or cache-cleared) offline-shell warm-up indicator. The service
+  // worker's install step precaches the whole app shell before it activates,
+  // so `serviceWorker.ready` resolving is a reliable signal that the
+  // one-time download has finished — see sw.js.
   const swStatus = document.getElementById('swStatus');
   if ('serviceWorker' in navigator) {
     if (!navigator.serviceWorker.controller) {
       swStatus.style.display = 'block';
-      swStatus.textContent = 'กำลังเตรียมเครื่องมือ OCR แบบออฟไลน์ (ดาวน์โหลดครั้งเดียว ต้องใช้ Wi-Fi)…';
+      swStatus.textContent = 'กำลังเตรียมแอปสำหรับใช้งานออฟไลน์ (ดาวน์โหลดครั้งเดียว ต้องใช้ Wi-Fi)…';
     }
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').catch((err) => {
         console.warn('NeoRedact: service worker registration failed', err);
         swStatus.style.display = 'block';
-        swStatus.textContent = 'เตรียมเครื่องมือ OCR แบบออฟไลน์ไม่สำเร็จ — ตรวจสอบการเชื่อมต่อแล้วโหลดใหม่';
+        swStatus.textContent = 'เตรียมแอปสำหรับใช้งานออฟไลน์ไม่สำเร็จ — ตรวจสอบการเชื่อมต่อแล้วโหลดใหม่';
       });
     });
     navigator.serviceWorker.ready.then(() => {

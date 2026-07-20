@@ -1,7 +1,7 @@
 // Sends the already-redacted result to the NeoRedact Sync GAS backend.
-// Only ever called with the already-redacted canvas and its OCR results —
-// see app.js's state machine. Nothing here is a substitute for the local
-// export in export.js; sync is additive.
+// Only ever called with the already-redacted canvas and its manually-typed
+// field values — see app.js's state machine. Nothing here is a substitute
+// for the local export in export.js; sync is additive.
 window.NeoRedact = window.NeoRedact || {};
 
 (function () {

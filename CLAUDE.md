@@ -158,6 +158,19 @@ by Praew after using the app:
   redact region.
 - **Codename pool swap**: see "Codename pool" under "Codename identity model" above —
   Echo replaced with Zulu.
+- **Login step: Google button now shows a loading state** (`auth.js`'s `renderGoogleButton`).
+  Praew reported "google login หายไป" (Google login disappeared) with a screenshot of the
+  Login step showing only the hint text and the "ใช้อีเมลและรหัสผ่านแทน" link — the
+  `#googleSignInContainer` div was empty. Root cause: the button was never actually gone —
+  `renderGoogleButton` polls for `window.google.accounts.id` (Google Identity Services
+  loads async/defer) for up to 10s before showing a "failed to load" message, and on a
+  slow/flaky hospital connection the container just sits blank the whole time with zero
+  feedback, which reads as broken rather than loading. Fixed by setting
+  `container.textContent` to a "กำลังโหลด Google Sign-In…" placeholder immediately, before
+  polling starts; the eventual failure message also now points at the email/password
+  fallback link right below it. This is a pure UX fix — no change to when/whether the
+  button ultimately renders, login is still fully optional, and offline redact/field-entry
+  are unaffected.
 
 ## Local OCR removed (2026-07-20)
 

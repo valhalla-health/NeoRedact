@@ -135,16 +135,6 @@ main {
   line-height: 1.5;
 }
 
-.capture-guide {
-  color: var(--ink-dim);
-  text-align: center;
-}
-.capture-guide svg {
-  max-width: 260px;
-  margin: 0 auto 8px;
-  display: block;
-}
-
 .btn {
   appearance: none;
   border: none;
@@ -184,6 +174,11 @@ canvas#workCanvas {
   border: 1px solid var(--border);
 }
 
+.zoom-surface {
+  position: relative;
+  transform-origin: 0 0;
+}
+
 canvas#overlayCanvas {
   position: absolute;
   top: 0; left: 0;
@@ -215,12 +210,6 @@ canvas#overlayCanvas {
   outline: none;
 }
 
-.region-row .region-static-label {
-  flex: 1;
-  font-size: 14px;
-  color: var(--ink-dim);
-  font-style: italic;
-}
 
 .region-row .redact-toggle {
   font-size: 11px;
@@ -277,16 +266,6 @@ canvas#overlayCanvas {
   resize: vertical;
   min-height: 36px;
   outline: none;
-}
-
-.field-result .retry-btn {
-  align-self: flex-end;
-  font-size: 12px;
-  background: transparent;
-  border: none;
-  color: var(--accent);
-  cursor: pointer;
-  padding: 2px 4px;
 }
 
 .progress-line {

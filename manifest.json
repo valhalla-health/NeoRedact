@@ -1,7 +1,7 @@
 {
   "name": "NeoRedact",
   "short_name": "NeoRedact",
-  "description": "Offline patient-label redaction and field OCR. No server, no upload.",
+  "description": "Offline patient-label redaction and manual field entry. No server, no upload.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

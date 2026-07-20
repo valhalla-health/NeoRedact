@@ -1,7 +1,7 @@
 // Per-nurse login against neoredact-sync's GAS backend — Google Sign-In or
 // email/password, both produce the same session object. Login is optional:
-// redaction and OCR work fully offline without it (see app.js) — a session
-// is only needed to reach sync.js's Sync button.
+// redaction and field entry work fully offline without it (see app.js) — a
+// session is only needed to reach sync.js's Sync button.
 window.NeoRedact = window.NeoRedact || {};
 
 (function () {

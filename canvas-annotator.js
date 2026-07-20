@@ -9,16 +9,87 @@ window.NeoRedact = window.NeoRedact || {};
   'use strict';
 
   const MIN_REGION_SIZE = 12; // image px; smaller drags are treated as accidental taps
+  const MIN_ZOOM = 1;
+  const MAX_ZOOM = 4;
   let nextId = 1;
 
-  function createAnnotator(imageCanvas, overlayCanvas, callbacks) {
+  // zoomSurface (optional): the element that gets CSS-transformed for pinch
+  // zoom/pan. Purely a view transform on the overlay/image canvases' CSS
+  // box — never touches canvas pixel buffers or region coordinates, which
+  // stay in image-pixel space throughout (see toImageCoords).
+  function createAnnotator(imageCanvas, overlayCanvas, callbacks, zoomSurface) {
     callbacks = callbacks || {};
     const onChange = callbacks.onChange || function () {};
 
     let regions = [];
     let dragStart = null; // {x,y} in image-pixel space
     let dragCurrent = null;
-    let activePointerId = null;
+    let activePointerId = null; // the single finger/mouse currently drawing, if any
+
+    // One finger draws a redact/read box; a second finger switches to
+    // pinch-zoom instead (see handlePointerDown). `pointers` tracks every
+    // currently-down pointer in client coords; `pinch` holds the gesture's
+    // starting state while exactly 2+ fingers are down.
+    const pointers = new Map();
+    let pinch = null;
+    let zoom = { scale: 1, tx: 0, ty: 0 };
+
+    function applyZoom() {
+      if (zoomSurface) zoomSurface.style.transform = `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.scale})`;
+    }
+
+    function resetZoom() {
+      zoom = { scale: 1, tx: 0, ty: 0 };
+      applyZoom();
+    }
+
+    function distance(a, b) {
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    function cancelDraw() {
+      if (dragStart) {
+        dragStart = null;
+        dragCurrent = null;
+        redrawOverlay();
+      }
+      activePointerId = null;
+    }
+
+    function startPinch() {
+      const ids = Array.from(pointers.keys());
+      const p1 = pointers.get(ids[0]);
+      const p2 = pointers.get(ids[1]);
+      const wrapRect = (zoomSurface ? zoomSurface.parentElement : overlayCanvas).getBoundingClientRect();
+      const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+      pinch = {
+        startDist: distance(p1, p2),
+        startScale: zoom.scale,
+        wrapRect,
+        // Content-space point (in the wrap's own unscaled CSS pixels)
+        // currently under the pinch midpoint — kept anchored under the
+        // fingers as scale/translate change.
+        contentX: (mid.x - wrapRect.left - zoom.tx) / zoom.scale,
+        contentY: (mid.y - wrapRect.top - zoom.ty) / zoom.scale,
+      };
+    }
+
+    function updatePinch() {
+      const ids = Array.from(pointers.keys());
+      const p1 = pointers.get(ids[0]);
+      const p2 = pointers.get(ids[1]);
+      const dist = distance(p1, p2);
+      const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+      const scale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinch.startScale * (dist / pinch.startDist)));
+      let tx = mid.x - pinch.wrapRect.left - pinch.contentX * scale;
+      let ty = mid.y - pinch.wrapRect.top - pinch.contentY * scale;
+      // Clamp so the zoomed content always fully covers the frame — no
+      // panning past its edges into empty space.
+      tx = Math.max((1 - scale) * pinch.wrapRect.width, Math.min(0, tx));
+      ty = Math.max((1 - scale) * pinch.wrapRect.height, Math.min(0, ty));
+      zoom = { scale, tx, ty };
+      applyZoom();
+    }
 
     function syncOverlaySize() {
       overlayCanvas.width = imageCanvas.width;
@@ -58,7 +129,7 @@ window.NeoRedact = window.NeoRedact || {};
         const color = r.redact ? '#e0605a' : '#f2a3c6';
         ctx.strokeStyle = color;
         ctx.strokeRect(r.x, r.y, r.w, r.h);
-        const text = r.redact ? 'ปิดทึบ' : (r.label || '(unlabeled)');
+        const text = r.label || (r.redact ? 'พื้นที่ปิดทึบ' : '(unlabeled)');
         const textWidth = ctx.measureText(text).width;
         ctx.fillStyle = color;
         ctx.fillRect(r.x, Math.max(0, r.y - 22), textWidth + 10, 20);
@@ -76,21 +147,50 @@ window.NeoRedact = window.NeoRedact || {};
     }
 
     function handlePointerDown(evt) {
+      pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
+      overlayCanvas.setPointerCapture(evt.pointerId);
+
+      if (pointers.size === 2) {
+        // Second finger down: this is a pinch-zoom, not a draw — abandon
+        // any in-progress single-finger box.
+        cancelDraw();
+        startPinch();
+        return;
+      }
+      if (pointers.size > 2 || pinch) return; // extra fingers during a pinch: ignore
+
       if (activePointerId !== null) return;
       activePointerId = evt.pointerId;
-      overlayCanvas.setPointerCapture(activePointerId);
       dragStart = toImageCoords(evt);
       dragCurrent = dragStart;
       redrawOverlay();
     }
 
     function handlePointerMove(evt) {
+      if (!pointers.has(evt.pointerId)) return;
+      pointers.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
+
+      if (pinch) {
+        if (pointers.size >= 2) updatePinch();
+        return;
+      }
       if (evt.pointerId !== activePointerId || !dragStart) return;
       dragCurrent = toImageCoords(evt);
       redrawOverlay();
     }
 
     function handlePointerUp(evt) {
+      pointers.delete(evt.pointerId);
+      try { overlayCanvas.releasePointerCapture(evt.pointerId); } catch (e) { /* already released */ }
+
+      if (pinch) {
+        // Gesture ends as soon as a finger lifts — a fresh touch is
+        // required to draw or to pinch again, rather than silently
+        // resuming a draw with whichever finger is still down.
+        if (pointers.size < 2) pinch = null;
+        return;
+      }
+
       if (evt.pointerId !== activePointerId || !dragStart) return;
       const rect = normalizedRect(dragStart, dragCurrent || dragStart);
       dragStart = null;
@@ -141,6 +241,9 @@ window.NeoRedact = window.NeoRedact || {};
       dragStart = null;
       dragCurrent = null;
       activePointerId = null;
+      pointers.clear();
+      pinch = null;
+      resetZoom();
       syncOverlaySize();
       redrawOverlay();
       onChange(getRegions());

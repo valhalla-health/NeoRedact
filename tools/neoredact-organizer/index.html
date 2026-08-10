@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NeoRedact Organizer</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <h1>NeoRedact Organizer</h1>
+    <p class="hint">Sorts exported photos into <code>codename/date</code> folders. Runs entirely on this machine — nothing is uploaded anywhere.</p>
+  </header>
+
+  <main>
+    <div class="badge-warn" id="compatWarning" style="display:none;">
+      Your browser doesn't support the File System Access API needed for this tool.
+      Use Chrome or Edge on desktop.
+    </div>
+
+    <!-- Step 1: Setup -->
+    <section class="card">
+      <h2>1. Folders</h2>
+      <div class="folder-row">
+        <div class="folder-info">
+          <span class="folder-label">Source (Downloads)</span>
+          <span class="folder-value" id="sourceFolderName">not set</span>
+        </div>
+        <button class="btn btn-secondary" id="btnPickSource">Choose folder</button>
+      </div>
+      <div class="folder-row">
+        <div class="folder-info">
+          <span class="folder-label">Destination (LocalOnly)</span>
+          <span class="folder-value" id="destFolderName">not set</span>
+        </div>
+        <button class="btn btn-secondary" id="btnPickDest">Choose folder</button>
+      </div>
+      <button class="btn btn-text" id="btnForgetFolders">Forget saved folders</button>
+    </section>
+
+    <!-- Step 2: Scan -->
+    <section class="card">
+      <h2>2. Scan</h2>
+      <button class="btn btn-primary btn-block" id="btnScan" disabled>Scan Downloads folder</button>
+      <p class="hint" id="scanSummary"></p>
+      <div class="scan-table-wrap">
+        <table class="scan-table" id="scanTable"></table>
+      </div>
+    </section>
+
+    <!-- Step 3: Organize -->
+    <section class="card">
+      <h2>3. Organize</h2>
+      <label class="checkbox-row">
+        <input type="checkbox" id="chkDeleteOriginals" />
+        Delete originals from Downloads after copying
+      </label>
+      <button class="btn btn-primary btn-block" id="btnOrganize" disabled>Organize</button>
+      <div class="log-box" id="logBox"></div>
+    </section>
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

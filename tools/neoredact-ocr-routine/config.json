@@ -1,0 +1,7 @@
+{
+  "mode": "test",
+  "dpoApproved": false,
+  "model": "claude-sonnet-5",
+  "sourceDir": "REPLACE_WITH_YOUR_LOCAL_MIRRORED_DRIVE_FOLDER",
+  "outputDir": "REPLACE_WITH_A_FOLDER_UNDER_YOUR_ONEDRIVE_SYNCED_DESKTOP"
+}

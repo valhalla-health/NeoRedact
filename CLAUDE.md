@@ -40,6 +40,16 @@ reused codename on her side, this app never tracks that.
   at `Code.gs`'s submit handler with "invalid or missing codename". Reconciled and the
   backend moved into this repo as `backend/` on 2026-08-10, specifically so the two lists
   can't drift again.
+- **There are three copies of this list, and they are correctly all different sizes.** All
+  three moved into this repo (2026-08-10) precisely because separate locations let them
+  drift silently. Before changing any of them, know which rule each one follows:
+  | File | Count | Rule |
+  |---|---|---|
+  | `codenames.js` (frontend) | 24 | What a nurse may pick **today**. The source of truth. |
+  | `backend/Code.gs` | 25 | What the server **accepts** — must be a superset of every version of the frontend still installed on a phone. See below. |
+  | `tools/neoredact-organizer/app.js` | 27 | What may appear in a **filename already on disk** — every name ever shipped. Only ever grows. |
+  Making them equal breaks two of the three: the backend would reject codenames from
+  not-yet-updated phones, and the organizer would stop recognizing older exports.
 - **The backend list is intentionally 25 right now, not 24** — it holds both `November` and
   `Nomad` (deployed `@5`, 2026-08-10). This is a deliberate transitional superset, not the
   drift described above: this app is an *installed PWA*, so a phone keeps serving its
@@ -253,6 +263,31 @@ there's a direct loop back to Capture that keeps the codename:
   identity model" above and the dashboard's grouped table). This feature is purely a
   client-side navigation shortcut to reach that same end state without re-selecting the
   codename each time.
+
+## Repo layout (consolidated 2026-08-10)
+
+The repo root is the PWA itself (`index.html` + its `<script src>` files) — that stays true,
+nothing was nested. Alongside it:
+
+- `backend/` — the GAS sync backend, its own clasp project (`.clasp.json` lives there, so
+  run `clasp` from that folder). Was `nicu-tools/neoredact-sync/`.
+- `tools/neoredact-ocr-routine/` — Phase 2 Claude-vision OCR of handwriting. **Not live**:
+  `run.js` refuses to touch anything but its bundled synthetic sample unless `config.json`
+  has both `"mode": "real"` and `"dpoApproved": true` set by hand. That gate is waiting on
+  KCMH DPO sign-off for sending patient-derived images to a third-party API — don't flip it
+  in code.
+- `tools/neoredact-organizer/` — personal desktop tool that files exports from Downloads
+  into `<codename>/<date>/` under LocalOnly. Browser-only, File System Access API.
+
+All three were unversioned local folders under `nicu-tools/` until 2026-08-10. They were
+consolidated here because they duplicate the codename list between them and had already
+drifted apart unnoticed — see "Codename identity model" above.
+
+**Nothing patient-derived belongs in this repo**, in any of these folders. The OCR
+routine's `output-real/` and the organizer's destination are LocalOnly territory;
+`.gitignore` covers the former, and the latter never writes inside the repo at all. The one
+committed image (`tools/neoredact-ocr-routine/sample/sample-label.png`) is a synthetic
+fixture, captioned as such on its face, with the name region blacked out.
 
 ## Stack
 

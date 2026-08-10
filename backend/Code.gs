@@ -50,11 +50,23 @@ const STAFF_HEADERS = ['email', 'role', 'name', 'active', 'password_hash', 'salt
 // in the frontend — a name the frontend can send but this list lacks is
 // rejected at submit as 'invalid or missing codename', so the two must move
 // together, in the same commit.
+//
+// TRANSITIONAL (2026-08-10): this list is deliberately one longer than the
+// frontend's — it holds BOTH 'November' and 'Nomad' while the rename rolls
+// out. The frontend is an installed PWA, so a phone keeps serving its cached
+// codenames.js until the service worker picks up the CACHE_VERSION bump; until
+// every install has, some clients still offer 'November' and some offer
+// 'Nomad', and this backend has to accept whichever arrives. Accepting one
+// extra name is harmless (validation only ever rejects the unknown); rejecting
+// a name a live phone still shows is not.
+// CLEANUP: drop 'November' once all installs are confirmed updated. Safe to
+// leave indefinitely if unsure — nothing breaks, it just lingers in the
+// dashboard's codename list.
 const CODENAMES = [
   'Alpha', 'Bravo', 'Charlie', 'Delta', 'Foxtrot', 'Golf', 'Hotel',
-  'India', 'Juliett', 'Kilo', 'Lima', 'Mike', 'November', 'Oscar', 'Papa',
-  'Quebec', 'Romeo', 'Sierra', 'Tango', 'Uniform', 'Victor', 'Whiskey',
-  'Yankee', 'Zulu'
+  'India', 'Juliett', 'Kilo', 'Lima', 'Mike', 'Nomad', 'November', 'Oscar',
+  'Papa', 'Quebec', 'Romeo', 'Sierra', 'Tango', 'Uniform', 'Victor',
+  'Whiskey', 'Yankee', 'Zulu'
 ];
 
 // Field labels a nurse might type that would re-identify the patient if they

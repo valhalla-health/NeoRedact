@@ -24,9 +24,14 @@ is — only a codename. Praew keeps her own private mapping (codename + date -> 
 HN/AN/name) on her desktop, entirely outside this system; date is what disambiguates a
 reused codename on her side, this app never tracks that.
 
-- **Codename pool**: fixed 24 values, the NATO phonetic alphabet minus X-ray and Echo
-  (Alpha…Zulu) — see `codenames.js`. Swapped 2026-07-20 (was minus X-ray and Zulu; Echo
-  dropped and Zulu added at the end, in alphabetical order). Identical list duplicated in
+- **Codename pool**: fixed 24 values — the NATO phonetic alphabet minus X-ray and Echo,
+  with November replaced by Nomad (Alpha…Zulu) — see `codenames.js`. Swapped 2026-07-20
+  (was minus X-ray and Zulu; Echo dropped and Zulu added at the end, in alphabetical
+  order), then November → Nomad on 2026-08-10. Both removals were for the same reason and
+  it's the rule to apply to any future change: **a codename must not be mistakable for
+  clinical content on a chart.** "Echo" reads as a cranial ultrasound note, "November" as
+  a date of birth. Substitutes keep the initial letter (Eagle was the proposed E; Nomad is
+  the N) so the pool stays a rough A–Z. Identical list duplicated in
   `backend/Code.gs`'s `CODENAMES` constant; keep both in sync if this ever changes, in the
   same commit. The backend went un-updated through the 2026-07-20 swap — it sat in a
   separate, unversioned folder and kept the old 26-name pool for three weeks. That was
@@ -35,6 +40,16 @@ reused codename on her side, this app never tracks that.
   at `Code.gs`'s submit handler with "invalid or missing codename". Reconciled and the
   backend moved into this repo as `backend/` on 2026-08-10, specifically so the two lists
   can't drift again.
+- **The backend list is intentionally 25 right now, not 24** — it holds both `November` and
+  `Nomad` (deployed `@5`, 2026-08-10). This is a deliberate transitional superset, not the
+  drift described above: this app is an *installed PWA*, so a phone keeps serving its
+  cached `codenames.js` until the service worker picks up the `CACHE_VERSION` bump (v7 → v8
+  ships the rename). Until every install has updated, some clients still offer November and
+  some offer Nomad, and the backend must accept either. The asymmetry is the whole point —
+  accepting a name no client sends is harmless, rejecting one a live phone still shows is
+  a failed sync on a nurse's phone. **Don't "fix" this by deleting November to match the
+  frontend.** Drop it only once all installs are confirmed updated (or leave it — nothing
+  breaks; it just lingers in the dashboard's codename list).
 - **Wizard step**: the "codename" step is the *first* step of the wizard (right after
   Login, before Capture) — nurse picks one of the 24 before she ever takes the photo, so
   every artifact produced downstream (redacted image, manually-typed field values, local

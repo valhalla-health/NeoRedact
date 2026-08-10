@@ -20,8 +20,10 @@ Google Sheets + Drive, no separate server.
    same privacy invariant as before.
 2. The nurse logs in (Google Sign-In or email/password) — see Auth below.
 3. The nurse picks a **codename** (fixed pool of 24, NATO phonetic alphabet
-   minus X-ray and Echo — see NeoRedact's `../codenames.js`) — the only
-   patient identifier that ever
+   minus X-ray and Echo, with November replaced by Nomad — see NeoRedact's
+   `../codenames.js`; this script's own `CODENAMES` is transitionally 25, still
+   accepting `November` while installed PWAs update — see the comment there)
+   — the only patient identifier that ever
    reaches this script. HN/DOB/name are stripped client-side and re-stripped
    here (`stripIdentifyingFields_`) before anything is written — this backend
    is never supposed to learn who the patient actually is. The real mapping

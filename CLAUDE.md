@@ -13,8 +13,8 @@ ever generates.
 
 Core redact + manual field-entry flow (v1) done. Local on-device OCR (Tesseract.js) was
 tried and removed 2026-07-20 — see "Local OCR removed" below; a nurse now types field
-values by hand on the Review step instead. Phase 1 sync to `nicu-tools/neoredact-sync` (GAS
-backend) is wired in — see "Sync" section below. Codename identity model + read-only
+values by hand on the Review step instead. Phase 1 sync to the GAS backend in `backend/`
+(moved into this repo 2026-08-10) is wired in — see "Sync" section below. Codename identity model + read-only
 dashboard (`dashboard.html`) landed 2026-07-16 — see "Codename identity model" below.
 
 ## Codename identity model (added 2026-07-16)
@@ -27,9 +27,14 @@ reused codename on her side, this app never tracks that.
 - **Codename pool**: fixed 24 values, the NATO phonetic alphabet minus X-ray and Echo
   (Alpha…Zulu) — see `codenames.js`. Swapped 2026-07-20 (was minus X-ray and Zulu; Echo
   dropped and Zulu added at the end, in alphabetical order). Identical list duplicated in
-  `neoredact-sync/Code.gs`'s `CODENAMES` constant; keep both in sync if this ever changes —
-  that file lives in the separate `neoredact-sync` repo and was not updated as part of the
-  2026-07-20 swap, so it still has the old pool until someone applies the same change there.
+  `backend/Code.gs`'s `CODENAMES` constant; keep both in sync if this ever changes, in the
+  same commit. The backend went un-updated through the 2026-07-20 swap — it sat in a
+  separate, unversioned folder and kept the old 26-name pool for three weeks. That was
+  survivable only because the frontend's 24 were a strict subset, so submissions still
+  validated; the reverse (frontend offering a name the backend lacks) is rejected outright
+  at `Code.gs`'s submit handler with "invalid or missing codename". Reconciled and the
+  backend moved into this repo as `backend/` on 2026-08-10, specifically so the two lists
+  can't drift again.
 - **Wizard step**: the "codename" step is the *first* step of the wizard (right after
   Login, before Capture) — nurse picks one of the 24 before she ever takes the photo, so
   every artifact produced downstream (redacted image, manually-typed field values, local
@@ -273,8 +278,9 @@ Redact-before-any-output, never-retain-original:
 
 ## Sync + login (Phase 1 collection — `sync.js` + `auth.js`)
 
-Backend lives at `nicu-tools/neoredact-sync/` (separate clasp-managed Apps Script project;
-see its README for setup/deploy steps). It's a stateless GAS REST API — Drive for the
+Backend lives at `backend/` in this repo (still its own clasp-managed Apps Script project —
+`.clasp.json` sits in that folder, so run `clasp` from there, not the repo root; see its
+README for setup/deploy steps). It's a stateless GAS REST API — Drive for the
 redacted photos, a Sheet for everything else — same shape as `nicu-tools/los-pilot`.
 
 NeoRedact is meant to be hosted on a **public** GitHub repo, so there is no static shared
@@ -288,7 +294,7 @@ Sync.
 
 - **Config**: `index.html`'s config block has `NEOREDACT_GAS_URL` (the deployed
   `neoredact-sync` URL) and `NEOREDACT_CLIENT_ID` (a Google OAuth Client ID — see
-  `neoredact-sync/README.md` for reusing NeoFeed's or creating a new one).
+  `backend/README.md` for reusing NeoFeed's or creating a new one).
 - **Session**: `auth.js` stores `{name, role, email, token}` in `sessionStorage` (not
   `localStorage` — clears when the browser fully closes, the right call for a shared/BYOD
   device) under `neoredact_session_v1`.
@@ -306,10 +312,10 @@ Sync.
   dropping the data — `sync.js` responds by clearing the stale session so the export step
   naturally prompts a fresh login next time, instead of retrying with a token that will
   never work again.
-- **Auth caveat**: the JWT decode in `neoredact-sync/Code.gs` does not verify Google's
+- **Auth caveat**: the JWT decode in `backend/Code.gs` does not verify Google's
   cryptographic signature (checks issuer/expiry/`email_verified` only) — acceptable because
   every login still goes through the `Staff` whitelist server-side, same tradeoff NeoFeed
-  ships with. See `nicu-tools/neoredact-sync/README.md`'s Security section for the rest.
+  ships with. See `backend/README.md`'s Security section for the rest.
 - **Phase 2 placeholder**: the Sheet has `ocr_status` / `ocr_data_json` columns reserved for
   a future Claude-vision pass over the handwritten fields — not built, gated on hospital
   approval. Nothing in this app or the backend calls any AI API today. This server-side,

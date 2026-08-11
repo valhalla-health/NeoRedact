@@ -2,10 +2,10 @@
 // CACHE_VERSION bump forces clients to refetch everything.
 'use strict';
 
-// v8 (2026-08-10): November -> Nomad in codenames.js. This bump is what makes
-// the rename actually reach an installed phone — without it a client keeps
-// serving the cached v7 codenames.js and goes on offering November.
-const CACHE_VERSION = 'v8';
+// v9 (2026-08-11): every hand-drawn Annotate box now defaults to redact
+// (canvas-annotator.js), not just the first one. Bump so an installed phone
+// picks up the new default instead of running the old v8 annotator logic.
+const CACHE_VERSION = 'v9';
 const SHELL_CACHE = `neoredact-shell-${CACHE_VERSION}`;
 const ALL_CACHES = [SHELL_CACHE];
 

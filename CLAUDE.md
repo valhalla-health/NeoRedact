@@ -289,6 +289,22 @@ routine's `output-real/` and the organizer's destination are LocalOnly territory
 committed image (`tools/neoredact-ocr-routine/sample/sample-label.png`) is a synthetic
 fixture, captioned as such on its face, with the name region blacked out.
 
+## Annotate: every hand-drawn box now defaults to redact (2026-08-11)
+
+Previously `canvas-annotator.js`'s `handlePointerUp` only defaulted the *first*
+hand-drawn region on a photo to `redact: true` (`redact: regions.length === 0`);
+every region after that defaulted to `redact: false` (a "read" field), so a nurse
+drawing a second or third box to cover more identifying text had to remember to
+flip it with the "อ่านค่า"/"ปิดทึบทั้งหมด" toggle herself. Changed to `redact: true`
+unconditionally — every freehand box now starts as redact, on the assumption that
+covering something is the more common and higher-stakes intent, and a nurse
+drawing a field-to-read box (HN, DOB, weight, ward…) explicitly toggles it off via
+the same per-region button (`toggleRedact`, unchanged) that already existed for
+this. Template-seeded regions (`seedFromTemplate`) are untouched — they already
+set `redact` explicitly per-region from `templates.js`. Updated the Annotate-step
+hint text in `index.html` to match, and bumped `sw.js`'s `CACHE_VERSION` to `v9` so
+installed phones pick up the new default instead of running the cached old logic.
+
 ## Stack
 
 Vanilla JS, no bundler, single `index.html` entry, `<script src>` load order (NOT the

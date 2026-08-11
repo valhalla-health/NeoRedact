@@ -202,7 +202,7 @@ window.NeoRedact = window.NeoRedact || {};
           id: nextId++,
           x: rect.x, y: rect.y, w: rect.w, h: rect.h,
           label: '',
-          redact: regions.length === 0,
+          redact: true,
         });
         onChange(getRegions());
       }

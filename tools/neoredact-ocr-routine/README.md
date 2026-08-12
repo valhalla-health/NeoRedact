@@ -79,3 +79,65 @@ The prompt sent to Claude explicitly tells it every blacked-out area is
 permanently unreadable by design and to never guess or reconstruct a name,
 even from a visible fragment — the same invariant the NeoRedact app itself
 enforces before OCR ever runs.
+
+## Aggregating to one CSV per patient
+
+```
+node aggregate-csv.js
+```
+
+Rolls the per-photo `.md`/`.json` files above into one CSV per codename, one
+row per photo, written to `<outputDir>/csv/`. Reads only files this tool (or
+the `/neoredact-ocr` skill) already wrote — never touches source photos and
+never calls Claude, so it carries none of the PDPA gate above; whatever it
+reads has already been through that gate (or, in test mode, is the synthetic
+sample). Codename and the photo's original date aren't in the `.json` itself
+(`writeOutputs()` never carried them over) — this script recovers both by
+parsing the sibling `.md`'s "Source photo" line, anchored against
+`config.sourceDir` so a coincidentally date-shaped ancestor folder (an old
+backup directory, say) can't get misread as the real `<codename>/<yyyy-MM-dd>`
+pair. `csv/` is gitignored, same reasoning as `output-real/`.
+
+Each patient's CSV only has columns for fields Claude actually found on
+*their* photos — two patients' CSVs won't necessarily have the same columns.
+Fine for a per-patient file, but worth knowing before concatenating multiple
+patients' CSVs into one analysis dataset later.
+
+### Codename reuse
+
+The codename pool is fixed at 24 names and is *meant* to be reused across
+different patients over time — see CLAUDE.md's codename identity model.
+"Date disambiguates a reused codename," but that mapping lives only in
+Praew's private, off-system sheet; this script has no access to it and never
+guesses when a codename has flipped to a new patient. Two things follow from
+that:
+
+- **Every CSV always has a `days_since_previous_photo` column**, computed
+  within whatever the final output group is. A large gap is informational
+  only, surfaced so it can be checked by hand — it is deliberately *not* used
+  to auto-split. A long gap is normal for a real NICU/BPD stay (months, not
+  days), so treating it as evidence of a new patient would misfire constantly
+  for exactly this app's population.
+- **Real splitting only happens if you tell it to**, via an optional
+  `episodesFile` path in `config.json`:
+
+  ```json
+  {
+    "Alpha": [
+      { "start": "2026-01-01", "end": "2026-03-15", "label": "Alpha-1" },
+      { "start": "2026-06-01", "end": null, "label": "Alpha-2" }
+    ]
+  }
+  ```
+
+  `end: null` means still ongoing. Fill this in from your private mapping —
+  codename + date range + a label, never a real name or HN. A codename with
+  no entry here is left as a single `<codename>.csv`, same as always. A photo
+  whose date falls in a gap between defined ranges goes to
+  `<codename>-unassigned.csv` rather than being dropped or guessed into the
+  nearest episode — check those by hand. Like `sourceDir`/`outputDir`, this
+  file should live outside the repo once it holds real episode boundaries —
+  it's not identifying on its own, but it's still metadata about real
+  admissions, so keep it with the rest of the real output rather than
+  committing it. Overlapping ranges or a label reused across codenames print
+  a warning (and use the first match) rather than failing silently.

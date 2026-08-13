@@ -15,9 +15,12 @@ Google Sheets + Drive, no separate server.
 
 ## What this does (Phase 1 — collection only)
 
-1. NeoRedact redacts the patient name **on the nurse's phone** and OCRs
-   whatever printed fields it can (HN, DOB, ward, etc.) — nothing new here,
-   same privacy invariant as before.
+1. NeoRedact redacts the patient name **on the nurse's phone**, and the nurse
+   types the remaining printed fields (HN, DOB, ward, etc.) by hand on the
+   Review step — nothing new here, same privacy invariant as before.
+   (On-device Tesseract OCR used to do this reading; it was removed
+   2026-07-20 for poor accuracy on real chart photos. This line still said
+   "and OCRs whatever printed fields it can" until 2026-08-13.)
 2. The nurse logs in (Google Sign-In or email/password) — see Auth below.
 3. The nurse picks a **codename** (fixed pool of 24, NATO phonetic alphabet
    minus X-ray and Echo, with November replaced by Nomad — see NeoRedact's
@@ -92,21 +95,28 @@ one spare, deleting the other. Old Drive files under the flat
 ## Setup
 
 1. `clasp login` (as `peeraporn.po@chula.ac.th`)
-2. `cd backend && clasp push` (run clasp from *this* folder — `.clasp.json`
+2. `cp .clasp.json.example .clasp.json` and fill in your `scriptId` — or just
+   `clasp clone <scriptId>`, which writes the same file. **`.clasp.json` is
+   gitignored** (since 2026-08-13): it points at one specific Apps Script
+   project, and this repo is public. It isn't a credential — nobody can touch
+   the script without permission on the Google account — but there's no reason
+   to publish it either. Existing checkouts already have the file and need
+   nothing.
+3. `cd backend && clasp push` (run clasp from *this* folder — `.clasp.json`
    lives here with `rootDir: ""`, so the repo root above is not uploaded)
-3. Open in Apps Script editor → run `setupSpreadsheet()` once (creates the
+4. Open in Apps Script editor → run `setupSpreadsheet()` once (creates the
    `Submissions` + `Staff` sheets + the `NeoRedact Submissions` Drive folder)
-4. Sign in to NeoRedact with your own Google account once — this
+5. Sign in to NeoRedact with your own Google account once — this
    auto-registers you as `admin` in the `Staff` sheet. Add other nurses'
    emails as rows (Google-account nurses: leave `password_hash`/`salt`
    blank; they self-register the same way on first login). For non-Google
    nurses, run `setInitialPassword("their@email.com", "some-password")` from
    the Apps Script editor once each.
-5. Deploy → **Manage deployments** → edit the existing deployment → Version:
+6. Deploy → **Manage deployments** → edit the existing deployment → Version:
    **New** → Deploy (use this, not "New deployment", once a deployment
    already exists — that would mint a different `/exec` URL and break every
    already-configured client)
-6. Set `NEOREDACT_CLIENT_ID` in NeoRedact's `index.html` config block to a
+7. Set `NEOREDACT_CLIENT_ID` in NeoRedact's `index.html` config block to a
    Google OAuth Client ID (try reusing NeoFeed's existing one first — Google
    validates by authorized JavaScript **origin**, not path, so if NeoRedact
    is hosted under the same origin it may just work; otherwise create a new

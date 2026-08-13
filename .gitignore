@@ -2,6 +2,10 @@
 Thumbs.db
 *.log
 
+# Points at a specific Apps Script project. Not a credential, but there's no
+# reason to publish it — copy .clasp.json.example and fill in your own scriptId.
+backend/.clasp.json
+
 # Phase 2 OCR is a deliberately local-only workflow — never committed, never
 # pushed. It is the one part of NeoRedact that reads real patient-derived
 # photos and sends them to a cloud AI, and its output belongs in LocalOnly.

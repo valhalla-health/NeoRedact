@@ -1,3 +1,9 @@
 .DS_Store
 Thumbs.db
 *.log
+
+# Phase 2 OCR is a deliberately local-only workflow — never committed, never
+# pushed. It is the one part of NeoRedact that reads real patient-derived
+# photos and sends them to a cloud AI, and its output belongs in LocalOnly.
+# See CLAUDE.md, "Repo layout". Don't un-ignore this.
+tools/neoredact-ocr-routine/

@@ -1,6 +1,0 @@
-node_modules/
-.env
-output-real/
-processed.json
-csv/
-episodes*.json

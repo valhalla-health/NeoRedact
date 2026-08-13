@@ -230,6 +230,13 @@ dependency for a feature nobody trusted.
   identical to what OCR used to produce, so `export.js` and `sync.js` (and the Sheet
   columns / dashboard on the backend) needed zero changes — they never cared where `text`
   came from.
+- **Leftovers swept 2026-08-13**: two things survived the 2026-07-20 removal unnoticed —
+  an empty `vendor/` directory on disk (git doesn't track empty dirs, so it was never on
+  GitHub) and `test-assets/sample-label.png`, a committed synthetic label image that was
+  referenced by nothing at all once `ocr-engine.js` went. Both gone; `test-assets/` and
+  `vendor/` no longer exist. (Not to be confused with the OCR routine's own
+  `sample/sample-label.png` — a different, name-redacted image, which left the repo with
+  that whole folder the same day.)
 - **Wizard step count dropped from 6 to 5** (`codename, capture, annotate, review, export`)
   — update anything that assumed the old 6-step numbering (the step badge, this file's own
   step comments in `index.html`).
@@ -271,11 +278,12 @@ nothing was nested. Alongside it:
 
 - `backend/` — the GAS sync backend, its own clasp project (`.clasp.json` lives there, so
   run `clasp` from that folder). Was `nicu-tools/neoredact-sync/`.
-- `tools/neoredact-ocr-routine/` — Phase 2 Claude-vision OCR of handwriting. **Not live**:
-  `run.js` refuses to touch anything but its bundled synthetic sample unless `config.json`
-  has both `"mode": "real"` and `"dpoApproved": true` set by hand. That gate is waiting on
-  KCMH DPO sign-off for sending patient-derived images to a third-party API — don't flip it
-  in code.
+- `tools/neoredact-ocr-routine/` — Phase 2 cloud OCR of handwriting. **On disk only —
+  git-ignored as a whole folder since 2026-08-13, and that is deliberate** (see "Phase 2
+  OCR is local-only" below). **Not live**: `run.js` refuses to touch anything but its
+  bundled synthetic sample unless `config.json` has both `"mode": "real"` and
+  `"dpoApproved": true` set by hand. That gate is waiting on KCMH DPO sign-off for sending
+  patient-derived images to a third-party API — don't flip it in code.
 - `tools/neoredact-organizer/` — personal desktop tool that files exports from Downloads
   into `<codename>/<date>/` under LocalOnly. Browser-only, File System Access API.
 
@@ -284,10 +292,37 @@ consolidated here because they duplicate the codename list between them and had 
 drifted apart unnoticed — see "Codename identity model" above.
 
 **Nothing patient-derived belongs in this repo**, in any of these folders. The OCR
-routine's `output-real/` and the organizer's destination are LocalOnly territory;
-`.gitignore` covers the former, and the latter never writes inside the repo at all. The one
-committed image (`tools/neoredact-ocr-routine/sample/sample-label.png`) is a synthetic
-fixture, captioned as such on its face, with the name region blacked out.
+routine's output and the organizer's destination are both LocalOnly territory; the OCR
+routine is now git-ignored entirely (see below) and the organizer never writes inside the
+repo at all.
+
+### Phase 2 OCR is local-only (2026-08-13)
+
+`tools/neoredact-ocr-routine/` is ignored by the repo-root `.gitignore` and untracked
+(`git rm -r --cached`). The files stay exactly where they are on disk and every path in
+this file, its own README, and the `/neoredact-ocr` skill still resolves — nothing moved.
+It is simply never committed and never pushed.
+
+Why this one folder and not the other tools: it is the only part of NeoRedact that reads
+**real** patient-derived photos and hands them to a cloud AI, and its whole configuration
+is machine-local (`config.json`'s `sourceDir` is a Google Drive mirror, `outputDir` is a
+LocalOnly path, `processed.json` is per-machine state). None of that is meaningful to
+anyone cloning a public repo, and all of it is a hostage to fortune if it ever drifts into
+a commit. The synthetic `sample/sample-label.png` fixture left the repo with the rest of
+the folder — no loss, it only ever served this tool.
+
+**This is not a regression of the 2026-08-10 consolidation.** That consolidation was about
+the *codename list* drifting between three copies; this folder holds no codename list. The
+copy that does — `tools/neoredact-organizer/app.js`, 27 names — stays committed, along with
+`codenames.js` and `backend/Code.gs`. All three lists are still in the repo, still all
+different sizes on purpose.
+
+Cloud OCR itself is unchanged and still allowed by design — the gate decides whether it
+runs on real photos, not whether the code is in git. Three interchangeable ways to do the
+reading, all sharing `config.json` + `processed.json` so they never double-process a photo:
+`run.js` (Anthropic API, needs a key), the `/neoredact-ocr` skill (Claude Code's own
+vision, no key), and `CODEX_PROMPT.md` (Codex, no key). Output always lands in
+`config.outputDir` under LocalOnly, never in this repo.
 
 ## Annotate: every hand-drawn box now defaults to redact (2026-08-11)
 

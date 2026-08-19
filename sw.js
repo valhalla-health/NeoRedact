@@ -2,10 +2,10 @@
 // CACHE_VERSION bump forces clients to refetch everything.
 'use strict';
 
-// v9 (2026-08-11): every hand-drawn Annotate box now defaults to redact
-// (canvas-annotator.js), not just the first one. Bump so an installed phone
-// picks up the new default instead of running the old v8 annotator logic.
-const CACHE_VERSION = 'v9';
+// v10 (2026-08-19): new KCMH Intake & Output Record (หน้า 2) auto-redact
+// template in templates.js. Bump so an installed phone offers the new page
+// option instead of serving the cached v9 template list.
+const CACHE_VERSION = 'v10';
 const SHELL_CACHE = `neoredact-shell-${CACHE_VERSION}`;
 const ALL_CACHES = [SHELL_CACHE];
 

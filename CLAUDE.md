@@ -104,11 +104,13 @@ reused codename on her side, this app never tracks that.
 
 Completes the backlog "template-based auto-redact of a fixed label position." New
 `templates.js` defines a small set of known KCMH paper chart pages (Critical Care
-Monitoring p1, Progress Note p3, Admission/Delivery Info p6 — measured from real blank
-chart photos, not committed to this repo, see below) with two hand-measured boxes each:
-the KCMH letterhead logo, and the "Sticker" box where the patient ID sticker (Name/HN/AN)
-is affixed. Coordinates are stored as **fractions of image width/height** (not absolute
-pixels), computed against the EXIF-corrected upright photo.
+Monitoring p1, Intake & Output Record p2, Progress Note p3, Admission/Delivery Info p6 —
+measured from real blank chart photos, not committed to this repo, see below) with up to
+two hand-measured boxes each: the KCMH letterhead logo, and the "Sticker" box where the
+patient ID sticker (Name/HN/AN) is affixed. A page carries only the boxes it actually has
+— p2 has no letterhead logo, so it seeds the sticker box alone. Coordinates are stored as
+**fractions of image width/height** (not absolute pixels), computed against the
+EXIF-corrected upright photo.
 
 - **UI**: a new "แบบฟอร์มที่กำลังถ่าย" (which form page) `<select>` on the Capture step
   (`index.html`/`app.js`). Default is `manual` — the original free-hand behavior, unchanged.
@@ -128,10 +130,12 @@ pixels), computed against the EXIF-corrected upright photo.
   place *two* redact boxes at once and the nurse needs to tell them apart while checking —
   the label is still never read by `redactor.js` or fed into `state.results`, purely a
   display convenience (see "Redact region labels now editable", 2026-07-20, below).
-- **Pages with no identifying fields aren't listed** — e.g. the Intake & Output Record page
-  has no logo or sticker box on it at all, so it isn't a template option; `manual` is used
-  for it same as the original single-label workflow (the wizard still requires at least one
-  `redact: true` region to continue, unchanged).
+- **Pages with no identifying fields aren't listed** — a page with neither a logo nor a
+  sticker box on it isn't a template option; `manual` is used for it same as the original
+  single-label workflow (the wizard still requires at least one `redact: true` region to
+  continue, unchanged). The Intake & Output Record page was the standing example of this
+  until 2026-08-19 — see "Intake & Output Record added as หน้า 2" below; check the page
+  itself before assuming it has nothing to redact.
 - **Known limitation**: capture is still the OS-native camera app via
   `<input type="file" capture="environment">` (see `camera-capture.js`) — there is no live
   in-app preview to show an alignment guide while shooting (the static example-framing card
@@ -150,6 +154,29 @@ pixels), computed against the EXIF-corrected upright photo.
   load the photo, correct EXIF orientation, read off the logo/sticker box's pixel bounds, and
   divide by the corrected image's width/height to get the new `xPct/yPct/wPct/hPct`. Pad
   generously; err toward over-covering, never under-covering.
+
+### Intake & Output Record added as หน้า 2 (2026-08-19)
+
+`templates.js` gained a fourth template, `kcmh_p2_intake_output`
+("KCMH · Intake & Output Record (หน้า 2)"), after Praew photographed the page and marked
+where the patient sticker actually sits. The page had been called out here since
+2026-07-17 as the example of a page with *no* identifying fields — that was wrong: it has
+no KCMH letterhead logo, but the patient sticker is affixed in the **top-right corner**,
+above the "Total in 24 hr." box.
+
+- **One region, not two**: `Sticker (Name/HN/AN)` only. It's the first template with a
+  single box; `seedFromTemplate` already looped over whatever the template gave it, so no
+  code change was needed for that. The Capture-step hint (`app.js`'s
+  `KCMH_TEMPLATE_HINT`) was reworded from "โลโก้โรงพยาบาลและสติกเกอร์" (logo *and*
+  sticker) to "โลโก้/สติกเกอร์ ... ของแบบฟอร์มที่เลือก" so it doesn't promise a logo box
+  on a page that has none.
+- **Box is padded hard** — `xPct 0.69, yPct 0, wPct 0.30, hPct 0.10`, i.e. the whole
+  top-right corner out to the right edge, well beyond the sticker's measured bounds. This
+  page is shot hand-held off a ward clipboard and comes out rotated a few degrees more
+  often than the others, and the corner it covers holds no clinical data worth preserving,
+  so over-covering costs nothing here. Same rule as always: err toward over-covering.
+- **`sw.js` `CACHE_VERSION` bumped v9 → v10** so installed phones pick up the new template
+  list instead of serving the cached v9 `templates.js` (which has no หน้า 2 option at all).
 
 ## UI tweaks (added 2026-07-20)
 

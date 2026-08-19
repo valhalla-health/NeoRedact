@@ -7,11 +7,14 @@
 // Coordinates are approximate on purpose: canvas-annotator.js still lets the
 // nurse drag-adjust or delete/redraw any seeded region before confirming,
 // same as a fully manual box. Auto-seeding only saves her from drawing the
-// same two boxes from scratch every time she photographs the same page.
+// same one or two boxes from scratch every time she photographs the same
+// page.
 //
-// Pages with no identifying fields at all (e.g. the Intake & Output Record
-// page) are intentionally NOT listed here — 'manual' is the only option for
-// those, same as the original single-label workflow.
+// Pages with no identifying fields at all are intentionally NOT listed here —
+// 'manual' is the only option for those, same as the original single-label
+// workflow. (The Intake & Output Record page used to be the example of one;
+// it turned out to carry a patient sticker in its top-right corner after all,
+// and was added as หน้า 2 on 2026-08-19.)
 window.NeoRedact = window.NeoRedact || {};
 
 (function () {
@@ -24,6 +27,18 @@ window.NeoRedact = window.NeoRedact || {};
       regions: [
         { label: 'KCMH logo', redact: true, xPct: 0.0780, yPct: 0.0346, wPct: 0.2411, hPct: 0.1118 },
         { label: 'Sticker (Name/HN/AN)', redact: true, xPct: 0.2837, yPct: 0.0958, wPct: 0.1702, hPct: 0.0718 },
+      ],
+    },
+    {
+      // No KCMH letterhead logo on this page — the only identifying mark is
+      // the patient sticker in the top-right corner, above the "Total in 24
+      // hr." box. Box is padded well past the sticker's measured bounds
+      // (left/down especially) since this page is usually shot hand-held and
+      // slightly rotated.
+      id: 'kcmh_p2_intake_output',
+      title: 'KCMH · Intake & Output Record (หน้า 2)',
+      regions: [
+        { label: 'Sticker (Name/HN/AN)', redact: true, xPct: 0.6900, yPct: 0, wPct: 0.3000, hPct: 0.1000 },
       ],
     },
     {

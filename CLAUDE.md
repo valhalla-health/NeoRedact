@@ -307,10 +307,17 @@ nothing was nested. Alongside it:
   run `clasp` from that folder). Was `nicu-tools/neoredact-sync/`.
 - `tools/neoredact-ocr-routine/` — Phase 2 cloud OCR of handwriting. **On disk only —
   git-ignored as a whole folder since 2026-08-13, and that is deliberate** (see "Phase 2
-  OCR is local-only" below). **Not live**: `run.js` refuses to touch anything but its
-  bundled synthetic sample unless `config.json` has both `"mode": "real"` and
-  `"dpoApproved": true` set by hand. That gate is waiting on KCMH DPO sign-off for sending
-  patient-derived images to a third-party API — don't flip it in code.
+  OCR is local-only" below). **The gate is open on Praew's machine and the routine is
+  live**: her (never-committed) `config.json` has both `"mode": "real"` and
+  `"dpoApproved": true`, and real patient-derived photos have been processed since
+  2026-08-13. This entry said "Not live … waiting on KCMH DPO sign-off" until 2026-08-14,
+  which was stale.
+  The gate mechanism is unchanged and stays that way: without **both** flags set by hand,
+  `run.js` refuses to touch anything but its bundled synthetic sample. Never flip either
+  flag in code, never set them in `config.example.json`, and never commit a real
+  `config.json` — the shipped example defaults to the safe values on purpose. The PDPA
+  reasoning behind the gate (HN/DOB are still personal data; Section 26 sensitive data;
+  Section 28 cross-border transfer to a US processor) is in the routine's own README.
 - `tools/neoredact-organizer/` — personal desktop tool that files exports from Downloads
   into `<codename>/<date>/` under LocalOnly. Browser-only, File System Access API.
 
@@ -366,6 +373,127 @@ this. Template-seeded regions (`seedFromTemplate`) are untouched — they alread
 set `redact` explicitly per-region from `templates.js`. Updated the Annotate-step
 hint text in `index.html` to match, and bumped `sw.js`'s `CACHE_VERSION` to `v9` so
 installed phones pick up the new default instead of running the cached old logic.
+
+## Offline queue moved to IndexedDB (written 2026-08-15, shipped 2026-09-12)
+
+`sync.js`'s retry queue used to live in `localStorage` under
+`neoredact_sync_queue_v1`. A queued payload carries the redacted photo as base64 —
+measured at **2.33 MB of JPEG on real submissions, so ~3.1 MB of base64** — against
+a localStorage budget of roughly 5 MB per origin. **The queue could therefore hold
+exactly one photo.** The second consecutive failed sync threw `QuotaExceededError`
+out of `writeQueue()`, out of `enqueue()`, and out of `syncNow()` into
+`btnSync`'s click handler in `app.js`, which had no `catch` — so the button stayed
+disabled, the status line stayed on "กำลัง sync…" forever, and the photo was gone.
+Verified in a browser before the fix: four 3.47 MB payloads, and the old
+localStorage path throws `QuotaExceededError`.
+
+- **Store**: IndexedDB database `neoredact-sync`, object store `queue`, `keyPath:
+  'syncId'`. A record *wraps* the payload (`{syncId, queuedAt, payload}`) rather than
+  extending it, so what gets POSTed stays byte-identical to an unqueued sync — don't
+  "simplify" this by storing the payload directly and adding fields to it.
+  `queuedAt` restores FIFO order, which the localStorage array gave for free and
+  IndexedDB (keyed by random UUID) does not.
+- **`enqueue()` never throws, and returns a boolean.** Its callers are already on a
+  failure path; a second failure there is what actually destroyed data. A `false`
+  return surfaces as the new `syncNow()` status **`queue-failed`** — the one status
+  meaning the photo is at risk (send failed *and* the device would not hold it).
+  `app.js` answers that by telling the nurse to use the local PNG download, which
+  needs no device storage. Keep that distinction: `queued-offline` means safe,
+  `queue-failed` means act now.
+- **Fallbacks are deliberate, not accidental**: if IndexedDB can't be opened at all
+  (private browsing, storage disabled by policy) `openDb()` resolves `null` and the
+  queue falls back to localStorage — with the same never-throw contract, so a full
+  localStorage yields `queue-failed` instead of an exception.
+- **Legacy migration** runs once on load: any pre-IndexedDB localStorage queue is
+  drained into IndexedDB, and the old key removed only after every record is safely
+  across. An upgrading phone doesn't strand the photo it was holding.
+- **`queueLength()` stays synchronous** (`app.js`'s `renderSyncUI` reads it inline)
+  by mirroring the count in a module-level `cachedCount` that every mutation
+  updates.
+- `btnSync`'s handler is now `try/catch/finally` with `renderSyncUI()` in the
+  `finally` — the button re-enables on every path, including an unexpected throw.
+- `sw.js` `CACHE_VERSION` bumped `v10` → `v11` so installed phones stop running the
+  old queue.
+
+**This was written 2026-08-15 and committed 2026-09-12 — it sat uncommitted in the
+working tree for four weeks, and the bug above was live on nurses' phones that whole
+time.** It originally bumped `v9` → `v10`; in the meantime the หน้า 2 template change
+shipped as v10 and reached installed phones. Committing at v10 would have been worse
+than not committing at all: the fix would look deployed while every installed phone
+kept serving its cached old `sync.js`, because the service worker only refetches when
+the version *string* changes. Hence v11. **Before bumping `CACHE_VERSION`, check what
+is actually deployed** (`curl -s <pages-url>/sw.js | grep CACHE_VERSION`) rather than
+trusting the last commit — an uncommitted change cannot tell you what phones are
+running.
+
+## Photo retention and the LocalOnly archive (2026-08-15)
+
+The original plan was to delete synced photos from Drive after 30 days. **That plan
+is dead** and must not be reinstated as written. It assumed Phase 2 OCR turned a
+photo into data within a day, which made the photo disposable on a timer. With
+extraction done by hand instead, a photo is the *only* copy of data nobody has read
+yet — the raw capture is destroyed on the phone by design — so an age-based timer
+deletes work that hasn't been done. Retention has to key on **whether the data has
+been extracted and checked**, not on age; age is for alerting only.
+
+**Photos stay at full camera resolution** (decided 2026-08-15). Downscaling before
+sync — capping the long edge in `sync.js`'s `buildPayload` to cut ~2.3 MB to ~0.6 MB
+and quadruple what fits in the 20 GB — was proposed and **rejected**: the detail may
+be needed later, and since the raw capture is destroyed on the phone by design, a
+downscale is irreversible with no second chance to re-shoot. The consequence is that
+storage is managed by *moving photos onto an external drive*, never by shrinking
+them, and the archive grows without bound by design. Don't reopen this as an
+optimization.
+
+What exists so far is the copy step and the growth alert, and only those:
+
+- **`G:\My Drive` is a mirror, not a backup.** Google Drive for Desktop removes the
+  local file the instant the Drive-side file goes, and the OCR routine's
+  `config.json` `sourceDir` points straight into that mirror. So "free up the 20 GB
+  quota" and "destroy the archive" are the same keystroke unless a real copy exists
+  outside Drive's reach first.
+- **`PraewPP\.claude\archive_neoredact.ps1`** (outside this repo — it names LocalOnly
+  paths, and this repo is public) copies `G:\My Drive\NeoRedact Submissions` into
+  `C:\Users\USER\LocalOnly\NeoRedact_photo_archive`, verifying each file's size on
+  arrival and re-verifying the whole tree afterwards. Scheduled task **"NeoRedact
+  Photo Archive"**, every 2 days at 08:30. It never deletes anything, anywhere.
+- **The manifest is load-bearing.**
+  `C:\Users\USER\LocalOnly\NeoRedact_photo_archive_manifest.txt` lists every relative
+  path ever archived. Without it, moving photos onto an external drive would leave
+  them missing from the archive but still present in Drive, and the next run would
+  cheerfully re-download every one of them and refill the disk that was just cleared
+  — verified 2026-08-15 by deleting the manifest and watching exactly that happen.
+  **Never delete the manifest**, and never "clean up" its contents when photos leave
+  for the external drive; that is precisely when it matters. It lives in LocalOnly
+  rather than beside the log in OneDrive because its lines are
+  `<codename>\<date>\<syncId>.jpg` — the same key as Praew's private mapping.
+- **Alerting is a Windows toast plus a log line**, fired by the same every-2-days run:
+  yellow at ≥5 GB archived or ≥50% of the 20 GB quota, orange at ≥10 GB / ≥70% /
+  under 50 GB free on C:, red under 20 GB free or ≥85% quota (red uses a persistent
+  `scenario="reminder"` toast). All four are `param()` defaults, so they can be tuned
+  without editing logic. The toast is fired by shelling out to Windows PowerShell 5.1
+  because the task runs pwsh 7, which can't load WinRT types — if that ever breaks,
+  the log line is the channel that always works.
+- **Two things silently kill that toast, and both did on 2026-08-15.** (1) A
+  non-packaged app needs a Start Menu shortcut carrying its AppUserModelID; without
+  it Windows discards the toast with no error and exit code 0. Registering the AUMID
+  under `HKCU\SOFTWARE\Classes\AppUserModelId` alone is *not* enough. The shortcut is
+  `%APPDATA%\...\Start Menu\Programs\NeoRedact.lnk` (AUMID `NeoRedact.PhotoArchive`),
+  recreatable with `.claude\neoredact_toast_setup.ps1`. (2) pwsh 7's `-Encoding UTF8`
+  writes no BOM, so Windows PowerShell 5.1 reads the generated temp script as ANSI
+  and the Thai alert text becomes mojibake that fails `LoadXml` inside the child
+  process — the alert text is therefore passed as *arguments*, never embedded in the
+  script body. Whether a toast actually arrived is checked with
+  `ToastNotificationManager::History.GetHistory(<aumid>)`; do **not** check for the
+  `Notifications\Settings\<aumid>` registry key, which Windows caches and will not
+  recreate, giving false negatives.
+- **The safe move is copy → verify → delete only the C: copy**, which keeps two
+  copies alive (external + Drive) at every moment. Deleting the Drive copy in the same
+  pass would leave the external drive as a single point of failure.
+- **Nothing deletes from Drive yet.** The lifecycle states (`new` → `archived` →
+  `typed` → `verified`, reusing the reserved `ocr_status` column) and the Drive-side
+  cleanup are designed but **not built** — don't read this section as describing a
+  working retention system.
 
 ## Stack
 

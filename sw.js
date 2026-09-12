@@ -5,7 +5,19 @@
 // v10 (2026-08-19): new KCMH Intake & Output Record (หน้า 2) auto-redact
 // template in templates.js. Bump so an installed phone offers the new page
 // option instead of serving the cached v9 template list.
-const CACHE_VERSION = 'v10';
+//
+// v11 (2026-09-12): the offline retry queue moved from localStorage to
+// IndexedDB (sync.js) and the Sync button can no longer be stranded by a failed
+// queue write (app.js). Bump so an installed phone stops running the old
+// queue, which could hold only one photo before throwing.
+//
+// This change was written 2026-08-15 and also bumped v9 -> v10, but it sat
+// uncommitted until 2026-09-12 — by which time the template change above had
+// already shipped as v10 and was live on phones. Keeping it at v10 would have
+// meant every installed phone kept serving its cached old sync.js and never
+// received the fix. Hence v11. If you ever bump this number, check what is
+// actually deployed first, not just what the last commit says.
+const CACHE_VERSION = 'v11';
 const SHELL_CACHE = `neoredact-shell-${CACHE_VERSION}`;
 const ALL_CACHES = [SHELL_CACHE];
 

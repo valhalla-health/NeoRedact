@@ -400,24 +400,42 @@
         : 'ส่งรูปที่ปิดชื่อแล้วและข้อมูลไปยัง NICU Sheet');
   }
 
+  // Every exit path goes through the finally block. Before 2026-08-15 an
+  // exception out of syncNow() — in practice a full-storage error thrown while
+  // queueing the second failed photo — skipped renderSyncUI() entirely and left
+  // the button disabled with "กำลัง sync…" on screen forever, which reads as a
+  // frozen app and loses the photo. sync.js no longer throws from that path, and
+  // this catch makes sure nothing else can strand the UI either.
   el.btnSync.addEventListener('click', async () => {
     el.btnSync.disabled = true;
     el.syncStatusLine.style.display = 'block';
     el.syncStatusLine.textContent = 'กำลัง sync…';
-    const result = await NR.sync.syncNow(el.workCanvas, state.results, '', state.codename, state.artifactId);
-    if (result.status === 'synced') {
-      el.syncStatusLine.textContent = 'Sync ไปยัง NICU Sheet เรียบร้อยแล้ว';
-    } else if (result.status === 'needs-login') {
-      el.syncStatusLine.textContent = 'บันทึกไว้ในเครื่องนี้แล้ว — การเข้าสู่ระบบหมดอายุ กรุณาเข้าสู่ระบบใหม่เพื่อส่งข้อมูล';
-      NR.auth.logout();
-    } else if (result.status === 'queued-offline') {
-      el.syncStatusLine.textContent = 'ขณะนี้ไม่มีการเชื่อมต่อ — บันทึกไว้ในเครื่องนี้แล้ว และจะส่งอัตโนมัติเมื่อกลับมาออนไลน์';
-    } else if (result.status === 'missing-codename') {
-      el.syncStatusLine.textContent = 'กรุณาเลือกรหัสผู้ป่วยก่อน sync';
-    } else {
-      el.syncStatusLine.textContent = 'อุปกรณ์นี้ยังไม่ได้ตั้งค่า sync';
+    try {
+      const result = await NR.sync.syncNow(el.workCanvas, state.results, '', state.codename, state.artifactId);
+      if (result.status === 'synced') {
+        el.syncStatusLine.textContent = 'Sync ไปยัง NICU Sheet เรียบร้อยแล้ว';
+      } else if (result.status === 'needs-login') {
+        el.syncStatusLine.textContent = 'บันทึกไว้ในเครื่องนี้แล้ว — การเข้าสู่ระบบหมดอายุ กรุณาเข้าสู่ระบบใหม่เพื่อส่งข้อมูล';
+        NR.auth.logout();
+      } else if (result.status === 'queued-offline') {
+        el.syncStatusLine.textContent = 'ขณะนี้ไม่มีการเชื่อมต่อ — บันทึกไว้ในเครื่องนี้แล้ว และจะส่งอัตโนมัติเมื่อกลับมาออนไลน์';
+      } else if (result.status === 'queue-failed') {
+        // The one case where the photo is genuinely at risk: the send failed and
+        // the device refused to hold the payload for a retry. Say so plainly and
+        // point at the local download, which needs no storage of its own.
+        el.syncStatusLine.textContent =
+          'ส่งไม่สำเร็จ และเก็บไว้ในเครื่องนี้ไม่ได้ (พื้นที่เก็บเต็ม) — กรุณากด "ดาวน์โหลดรูปที่ปิดชื่อแล้ว" ด้านล่างเก็บไฟล์ไว้ก่อน แล้วค่อย sync ใหม่';
+      } else if (result.status === 'missing-codename') {
+        el.syncStatusLine.textContent = 'กรุณาเลือกรหัสผู้ป่วยก่อน sync';
+      } else {
+        el.syncStatusLine.textContent = 'อุปกรณ์นี้ยังไม่ได้ตั้งค่า sync';
+      }
+    } catch (err) {
+      el.syncStatusLine.textContent =
+        'ส่งไม่สำเร็จ — กรุณากด "ดาวน์โหลดรูปที่ปิดชื่อแล้ว" ด้านล่างเก็บไฟล์ไว้ก่อน แล้วลอง sync ใหม่อีกครั้ง';
+    } finally {
+      renderSyncUI(); // re-enables the Sync button on every path, including failure
     }
-    renderSyncUI();
   });
 
   el.btnBackToReviewFromExport.addEventListener('click', () => showStep('review'));

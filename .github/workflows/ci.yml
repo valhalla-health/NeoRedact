@@ -1,0 +1,46 @@
+# This repository has no build step: what is committed is what runs. JSX is
+# transpiled in the browser by @babel/standalone, and Apps Script files are
+# pushed as-is. A syntax error or a renamed file therefore reaches a page load
+# before anything catches it.
+#
+# These are static checks only. They parse every js/jsx/gs file, validate every
+# JSON file, confirm each local script/link reference resolves, and require an
+# integrity hash on every pinned CDN script.
+#
+# What this cannot check is the privacy invariant, which is the thing that
+# actually matters here: redaction stays local, and OCR does not become a cloud
+# feature. That remains a human decision, per CLAUDE.md and the README.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Dev-only, never committed. The app itself has no dependencies.
+      - name: Install the parser
+        run: npm install --no-save --no-package-lock @babel/parser@7
+
+      - name: Static checks
+        run: node tools/ci-verify.cjs

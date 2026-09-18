@@ -22,4 +22,5 @@ jobs:
         with:
           node-version: 22
       - run: node test/verify-auth.cjs
+      - run: node test/verify-submit-input.cjs
       - run: node test/verify-dashboard-escaping.cjs

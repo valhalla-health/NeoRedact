@@ -59,7 +59,13 @@ end up producing the same `CacheService` session token (6h TTL):
   then already have an active `Staff` row.
 - **Email + password** — for nurses without a Google account. Requires you to
   run `setInitialPassword(email, password)` once per nurse from the Apps
-  Script editor first; there's no self-registration for this path.
+  Script editor first; there's no self-registration for this path. Five wrong
+  passwords lock that address for 15 minutes. The lock lifts on its own, and
+  setting a new password doesn't lift it sooner. An address with no password
+  behind it gets exactly the answer a wrong password gets, so the login screen
+  can't be used to find out who is staff. Passwords are stored stretched
+  (`v2$…`, 3000 rounds of HMAC-SHA256); one set up before 2026-09-18 keeps
+  working, and is re-stored that way the next time its owner signs in.
 
 **Neither path creates an account.** Signing in only ever *looks up* a row.
 
@@ -89,7 +95,7 @@ whenever her 6h session happens to expire.
 
 | Column | Notes |
 |---|---|
-| syncId | Client-generated UUID, used to dedupe retries |
+| syncId | Client-generated, used to dedupe retries and to name the Drive file: `crypto.randomUUID()`, or `String(Date.now()) + Math.random()` on a browser without it. Any other shape is refused. |
 | submitted_at | Server timestamp (ISO) |
 | device_captured_at | Client-reported capture time |
 | submitted_by | Email of the logged-in nurse — audit trail |
@@ -101,6 +107,10 @@ whenever her 6h session happens to expire.
 | ocr_data_json | Empty — reserved for Phase 2 |
 
 No HN/DOB/name column exists here by design — see "What this does" above.
+
+Every value is written as text. One that starts with `=`, `+`, `-` or `@` gets
+a leading apostrophe, which makes Sheets store it as text instead of a formula
+that would run when the sheet is opened; it reads back without the apostrophe.
 
 ## Migrating an already-deployed sheet (HN/DOB → codename)
 
@@ -159,7 +169,7 @@ one spare, deleting the other. Old Drive files under the flat
 ## Daily workflow
 
 ```powershell
-cd "~\OneDrive\Desktop\PraewPP\Web App Projects\NeoRedact\backend"
+cd "$env:USERPROFILE\repos\PraewPP\Web App Projects\NeoRedact\backend"
 clasp pull
 # edit
 clasp push
@@ -188,8 +198,9 @@ clasp push
   before real patients' data flows through it in production, independent of
   anything built here.
 - **Fixed 2026-09-18 — do not reintroduce.** This backend was copied from a
-  mid-2026 NeoFeed revision and inherited two faults NeoFeed had already
-  fixed on 2026-07-12 (its commit `4e927b9`), which this README used to
+  mid-2026 NeoFeed revision and inherited two faults NeoFeed had fixed long
+  before — the admin auto-registration on 2026-05-28 (its commit `8d49cd1`),
+  the unverified token on 2026-07-12 (`4e927b9`) — which this README used to
   describe as an acceptable tradeoff:
   1. the Google ID token was only base64-decoded. Every claim it checked
      (`iss`, `exp`, `email`, `email_verified`) is written by whoever sends
@@ -202,6 +213,14 @@ clasp push
   link — was reachable without a genuine account. Verification now goes
   through Google, accounts are never self-created, and the dashboard is
   admin-only. `test/verify-auth.cjs` fails against the old behaviour.
+- **Also since 2026-09-18 (the follow-up)** — the rest of what NeoFeed had
+  (its `4e927b9` and `8ca0f74`) and this copy lacked: the password lockout,
+  counted before the hash; one answer, at one cost, for addresses with no
+  password; stretched hashes compared in constant time; formula escaping on
+  every cell a submission writes; a `syncId` that must have a shape the app
+  mints; and no exception text in any response. `doPost` logs the detail
+  instead — read it under Apps Script → Executions.
+  `test/verify-auth.cjs` and `test/verify-submit-input.cjs` pin all of it.
 - **The `Staff` sheet needs a review after this deploy.** While the above was
   live, any first Google sign-in wrote an `admin` row, so rows created that
   way are indistinguishable from intended ones. Read the sheet: anything you

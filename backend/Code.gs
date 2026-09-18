@@ -9,16 +9,19 @@
  * CacheService session token, so the submit path only ever checks
  * one thing regardless of how the nurse logged in. The Google token
  * is verified with Google (see verifyGoogleIdToken_); the password
- * path is new here (NeoFeed doesn't actually have one despite older
- * notes suggesting it did).
+ * path works like NeoFeed's — a lockout, stretched hashes, and one
+ * answer for every refusal (see verifyPassword_).
  *
  * This file was originally copied from a mid-2026 revision of
- * NeoFeed/gas-backend.gs and inherited two holes NeoFeed had already
- * closed on 2026-07-12 (its commit 4e927b9): the Google token was
- * only base64-decoded, never verified, and an unknown address was
- * auto-registered as an admin. Both are fixed here (2026-09-18) and
- * pinned by backend/test/verify-auth.cjs. If you ever port code
- * between these two backends again, port the tests with it.
+ * NeoFeed/gas-backend.gs and missed everything NeoFeed hardened
+ * afterwards: NeoFeed stopped auto-registering unknown Google
+ * addresses as admins on 2026-05-28 (8d49cd1); its 4e927b9
+ * (2026-07-12) verified the Google token, stretched password hashes
+ * and escaped sheet writes; its 8ca0f74 (2026-09-17) added the
+ * password lockout, one answer for unknown addresses, and generic
+ * errors. All of it is here since 2026-09-18, pinned by
+ * test/verify-auth.cjs and test/verify-submit-input.cjs. If you ever
+ * port code between these two backends again, port the tests with it.
  *
  * Phase 2 (Claude-vision OCR of the handwritten fields) is a
  * placeholder column here (ocr_status / ocr_data_json) — nothing
@@ -117,21 +120,43 @@ function doGet(e) {
   return out({ status: 'ok', msg: APP.NAME + ' — POST only' });
 }
 
+// What a caller is told when a request fails in a way nobody wrote a message
+// for. Never the exception's own text: this URL answers anyone, and that text
+// can describe the server — the missing-SPREADSHEET_ID error names the Script
+// Property and the setup function to run. Must never contain "not
+// authenticated", which sync.js takes as a dead session and signs out on.
+const GENERIC_ERROR_MSG = 'เกิดข้อผิดพลาดในระบบ — ลองใหม่อีกครั้ง';
+
 function doPost(e) {
+  let route = '';
   try {
     const d = JSON.parse(e.postData.contents);
-    const action = d.action || 'submit';
-    if (action === 'login') return handleLogin_(d);
-    if (action === 'list_dashboard') return handleListDashboard_(d);
+    route = d.action === 'login' || d.action === 'list_dashboard' ? d.action : 'submit';
+    if (route === 'login') return handleLogin_(d);
+    if (route === 'list_dashboard') return handleListDashboard_(d);
     return handleSubmit_(d);
   } catch (err) {
-    return out({ status: 'error', msg: err.message });
+    // Every refusal a caller is meant to read is returned above, with its own
+    // message. What lands here is a fault — a missing Script Property, Sheets
+    // or Drive failing, a lock timeout, a body that isn't JSON — and its
+    // detail belongs in the execution log (Apps Script → Executions), not in
+    // the response. NeoFeed still shows signed-in callers the message; here
+    // nobody gets it, because nothing this file throws was written for a
+    // nurse to read.
+    Logger.log('doPost (' + (route || 'unparsed body') + ') failed: ' + (err && err.message));
+    return out({ status: 'error', msg: GENERIC_ERROR_MSG });
   }
 }
 
 /********************
  * Login
  ********************/
+// One answer for every password-path refusal — unknown address, no password
+// on the row, deactivated row, wrong password — so the answer can't be used
+// to tell which addresses are staff. See verifyPassword_.
+const LOGIN_FAILED_MSG = 'ไม่พบบัญชีนี้ในระบบ หรือรหัสผ่านไม่ถูกต้อง';
+const LOCKOUT_LOGIN_MSG = 'ลองใหม่ในอีก 15 นาที — login ผิดพลาดหลายครั้ง';
+
 function handleLogin_(d) {
   let user = null;
 
@@ -154,11 +179,13 @@ function handleLogin_(d) {
       Logger.log('Google sign-in refused: no active Staff row for ' + verified.email);
       return out({ status: 'error', msg: 'บัญชีนี้ยังไม่มีสิทธิ์ใช้งาน — แจ้งผู้ดูแลระบบให้เพิ่มอีเมลนี้ก่อน' });
     }
-  } else if (d.email && d.password) {
-    user = verifyPassword_(d.email, d.password);
+  } else {
+    const attempt = verifyPassword_(d.email, d.password);
+    if (attempt.locked) return out({ status: 'error', msg: LOCKOUT_LOGIN_MSG });
+    user = attempt.user || null;
   }
 
-  if (!user) return out({ status: 'error', msg: 'ไม่พบบัญชีนี้ในระบบ หรือรหัสผ่านไม่ถูกต้อง' });
+  if (!user) return out({ status: 'error', msg: LOGIN_FAILED_MSG });
 
   const token = createSession(user.email, user.role, user.name);
   return out({ status: 'ok', token: token, name: user.name, role: user.role, email: user.email });
@@ -168,22 +195,34 @@ function handleLogin_(d) {
 // Returns null for an unknown address or one whose row is not active — the
 // caller must not tell those two apart to the client.
 function lookupActiveStaff_(email) {
-  const sh = getSheetStaff_();
-  const rows = sh.getDataRange().getValues();
+  const row = findStaffRow_(email);
+  if (!row || !isActive_(row.values[3])) return null;
+  return staffUser_(row.values);
+}
+
+// The Staff row for an address — { rowNumber, values } — or null. Case and
+// surrounding spaces don't count; the first matching row wins.
+function findStaffRow_(email) {
   const wanted = String(email || '').trim().toLowerCase();
   if (!wanted) return null;
+  const rows = getSheetStaff_().getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim().toLowerCase() === wanted) {
-      const active = rows[i][3];
-      if (active !== true && String(active).toUpperCase() !== 'TRUE') return null;
-      return {
-        email: String(rows[i][0]).trim(),
-        role: normalizeRole_(rows[i][1]),
-        name: String(rows[i][2] || rows[i][0]),
-      };
-    }
+    if (String(rows[i][0]).trim().toLowerCase() === wanted) return { rowNumber: i + 1, values: rows[i] };
   }
   return null;
+}
+
+// The `active` column: a real checkbox, or TRUE typed by hand.
+function isActive_(value) {
+  return value === true || String(value).toUpperCase() === 'TRUE';
+}
+
+function staffUser_(values) {
+  return {
+    email: String(values[0]).trim(),
+    role: normalizeRole_(values[1]),
+    name: String(values[2] || values[0]),
+  };
 }
 
 // 'Admin' typed by hand in the sheet means admin; anything unrecognized means
@@ -193,24 +232,64 @@ function normalizeRole_(raw) {
   return role === ADMIN_ROLE ? ADMIN_ROLE : DEFAULT_ROLE;
 }
 
-// Password path: requires a pre-existing row with a hash already set via
-// setInitialPassword() — no auto-registration (there's nothing to compare
-// a self-submitted password against otherwise).
+// Password path, for nurses without a Google account. Needs a row whose hash
+// was set with setInitialPassword() — there is no self-registration. Returns
+// { user } for the right password on an active row, { locked: true } while the
+// address is locked out, and {} for every other refusal.
+//
+//   • Guessing: every attempt is counted before its password is checked, and
+//     the fifth failure locks the address for 15 minutes
+//     (beginPasswordAttempt_).
+//   • Probing: an address with no password account behind it — not on the
+//     sheet, or a Google-only row — gets the same answer as a wrong password,
+//     after the same amount of hashing, and locks out the same way. A
+//     deactivated row is refused only after its password has been checked.
+//     Otherwise the answer, or how fast it came, would say which addresses
+//     are staff.
+//   • Storage: passwords are stretched (hashPwdV2_). A row still on the old
+//     one-round hash is re-stored stretched the first time its owner signs in.
+//
+// Ported 2026-09-18 from NeoFeed's gas-backend.gs (commits 4e927b9, 8ca0f74).
 function verifyPassword_(email, password) {
-  const sh = getSheetStaff_();
-  const rows = sh.getDataRange().getValues();
-  for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim().toLowerCase() === email.trim().toLowerCase()) {
-      const active = rows[i][3];
-      if (active !== true && String(active).toUpperCase() !== 'TRUE') return null;
-      const storedHash = String(rows[i][4] || '');
-      const salt = String(rows[i][5] || '');
-      if (!storedHash || !salt) return null; // setInitialPassword() never run for this nurse
-      if (hashPwd(password, salt) !== storedHash) return null;
-      return { email: email, role: normalizeRole_(rows[i][1]), name: String(rows[i][2] || email) };
-    }
+  if (typeof email !== 'string' || typeof password !== 'string') return {};
+  const address = email.trim().toLowerCase();
+  if (!address || !password) return {};
+
+  const row = findStaffRow_(address);
+  const storedHash = row ? String(row.values[4] || '') : '';
+  const salt = row ? String(row.values[5] || '') : '';
+
+  if (!storedHash || !salt) {
+    // Counted in CacheService, which expires on its own, not in Script
+    // Properties: a stranger can invent addresses without limit and must not
+    // be able to create a property for each one.
+    const attempt = beginPasswordAttempt_(unknownLoginKey_(address), 'cache');
+    if (attempt.locked) return { locked: true };
+    hashPwdV2_(password, NO_ACCOUNT_SALT); // what a real check costs
+    return {};
   }
-  return null;
+
+  const failKey = loginFailKey_(address);
+  const attempt = beginPasswordAttempt_(failKey, 'props');
+  if (attempt.locked) return { locked: true };
+  const check = checkPassword_(password, salt, storedHash);
+  if (!check.ok) return {};
+  clearLockout_(failKey, 'props');
+  if (!isActive_(row.values[3])) return {};
+  if (check.upgrade) upgradeStoredHash_(row, check.upgrade);
+  return { user: staffUser_(row.values) };
+}
+
+// Writes the v2 hash over an old-format one. The write is by row number, and
+// the sheet is edited by hand: if a row was inserted or deleted above this
+// one since it was read, the same number now belongs to someone else, and a
+// hash made with this row's salt would lock them out. So the address is read
+// again first; if it has moved, the upgrade waits for a later login.
+function upgradeStoredHash_(row, hash) {
+  const sh = getSheetStaff_();
+  const now = sh.getRange(row.rowNumber, 1, 1, 1).getValues()[0][0];
+  if (String(now).trim().toLowerCase() !== String(row.values[0]).trim().toLowerCase()) return;
+  sh.getRange(row.rowNumber, 5, 1, 1).setValues([[hash]]);
 }
 
 // Run manually from the Apps Script editor to put someone on the Staff sheet.
@@ -239,7 +318,7 @@ function setInitialPassword(email, password) {
   const sh = getSheetStaff_();
   const rows = sh.getDataRange().getValues();
   const salt = Utilities.getUuid();
-  const hash = hashPwd(password, salt);
+  const hash = hashPwdV2_(password, salt);
   for (let i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim().toLowerCase() === email.trim().toLowerCase()) {
       sh.getRange(i + 1, 5, 1, 2).setValues([[hash, salt]]);
@@ -313,13 +392,127 @@ function verifyGoogleIdToken_(idToken) {
 }
 
 /********************
+ * Passwords: how they are stored, and how guessing is limited. NeoFeed's
+ * scheme (gas-backend.gs), ported 2026-09-18 — keep the two alike.
+ ********************/
+
+// v2: HMAC-SHA256 stretched over HASH_V2_ITERATIONS rounds, keyed by the salt
+// — NeoFeed's hashPwdV2, byte for byte. Apps Script has no bcrypt, scrypt or
+// PBKDF2; this loop is the closest it offers. The count is NeoFeed's: slow
+// enough to matter to someone guessing against a copied Staff sheet, fast
+// enough to keep a login well inside Apps Script's time limit. Changing the
+// count or the format locks out every account stored in it, which is why
+// test/verify-auth.cjs recomputes it independently.
+const HASH_V2_ITERATIONS = 3000;
+function hashPwdV2_(password, salt) {
+  let data = String(password) + ':' + String(salt);
+  for (let i = 0; i < HASH_V2_ITERATIONS; i++) {
+    data = toHex_(Utilities.computeHmacSha256Signature(data, salt));
+  }
+  return 'v2$' + data;
+}
+
+// v1: one round of SHA-256 over password + ':' + salt — how every password
+// set before this change was stored. Read, never written: a row in this
+// format is re-stored as v2 the first time its owner signs in.
+function hashPwdLegacy_(password, salt) {
+  return toHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password + ':' + salt));
+}
+
+// Checks a password against a stored hash in either format. The v2 hash is
+// computed on every path, an old-format row included, so a wrong password
+// costs the same whichever format its row is in — and an old row that turns
+// out to be right already has its replacement in hand (`upgrade`).
+function checkPassword_(password, salt, storedHash) {
+  const v2 = hashPwdV2_(password, salt);
+  if (storedHash.indexOf('v2$') === 0) return { ok: safeEqual_(v2, storedHash), upgrade: null };
+  const ok = safeEqual_(hashPwdLegacy_(password, salt), storedHash);
+  return { ok: ok, upgrade: ok ? v2 : null };
+}
+
+// Compares in a time that depends only on the length. `!==` stops at the first
+// differing character, which leaks, over enough attempts, how much matched.
+function safeEqual_(a, b) {
+  a = String(a);
+  b = String(b);
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+function toHex_(bytes) {
+  return bytes.map((b) => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
+}
+
+// Five failures lock an address for LOCKOUT_MS. A right password clears the
+// count, and a lockout that has run out starts it again from zero, so typos
+// never add up to a permanently disabled account.
+const LOCKOUT_MAX_FAILS = 5;
+const LOCKOUT_MS = 15 * 60 * 1000;
+const LOCKOUT_LOCK_WAIT_MS = 5000;
+// Salt for the hash spent on an address with no password behind it: the work
+// is thrown away, only its duration matters (see verifyPassword_).
+const NO_ACCOUNT_SALT = 'no-password-account';
+
+// A real password row is counted in Script Properties ('props'), an address
+// with no password behind it in CacheService ('cache') — see verifyPassword_.
+// Key names carry a SHA-256 of the address, never the address itself.
+function loginFailKey_(address) { return 'fail_' + sha256Hex_(address); }
+function unknownLoginKey_(address) { return 'lfail_' + sha256Hex_(address); }
+
+function lockoutRead_(key, store) {
+  return store === 'cache'
+    ? CacheService.getScriptCache().get(key)
+    : PropertiesService.getScriptProperties().getProperty(key);
+}
+function lockoutStatus_(key, store) {
+  const raw = String(lockoutRead_(key, store) || '0:0').split(':');
+  let fails = parseInt(raw[0], 10) || 0;
+  const failAt = parseInt(raw[1], 10) || 0;
+  const locked = fails >= LOCKOUT_MAX_FAILS && Date.now() - failAt < LOCKOUT_MS;
+  if (fails >= LOCKOUT_MAX_FAILS && !locked) fails = 0; // the lockout has run out
+  return { fails: fails, locked: locked };
+}
+function recordFailure_(key, fails, store) {
+  const value = (fails + 1) + ':' + Date.now();
+  if (store === 'cache') CacheService.getScriptCache().put(key, value, Math.ceil(LOCKOUT_MS / 1000));
+  else PropertiesService.getScriptProperties().setProperty(key, value);
+}
+function clearLockout_(key, store) {
+  if (store === 'cache') CacheService.getScriptCache().remove(key);
+  else PropertiesService.getScriptProperties().deleteProperty(key);
+}
+
+// Counts an attempt BEFORE its password is checked. Read the count, spend a
+// second hashing, then write it, and every request in a parallel burst reads
+// the same count before any of them writes: twenty simultaneous guesses would
+// register as one. So the read and the write happen together under a short
+// script lock — counter I/O only, never the hash — and a right password
+// clears the count afterwards. If the lock isn't free within
+// LOCKOUT_LOCK_WAIT_MS, waitLock throws and doPost answers with the generic
+// error: the attempt is refused unchecked, never let through uncounted.
+function beginPasswordAttempt_(key, store) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(LOCKOUT_LOCK_WAIT_MS);
+  try {
+    const status = lockoutStatus_(key, store);
+    if (status.locked) return { locked: true };
+    recordFailure_(key, status.fails, store);
+    return { locked: false };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function sha256Hex_(value) {
+  return toHex_(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(value), Utilities.Charset.UTF_8));
+}
+
+/********************
  * Sessions (CacheService) — the one thing both login paths produce and the
  * one thing the submit path checks.
  ********************/
-function hashPwd(password, salt) {
-  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password + ':' + salt);
-  return digest.map((b) => ('0' + (b & 0xFF).toString(16)).slice(-2)).join('');
-}
 function createSession(email, role, name) {
   const token = Utilities.getUuid();
   CacheService.getScriptCache().put('sess_' + token, JSON.stringify({ email, role, name }), SESSION_TTL_SECONDS);
@@ -359,7 +552,7 @@ function handleSubmit_(d) {
   const user = requireStaffSession_(d.token);
   if (!user) return out({ status: 'error', msg: 'not authenticated' });
 
-  if (!d.syncId) return out({ status: 'error', msg: 'syncId required' });
+  if (!isAppSyncId_(d.syncId)) return out({ status: 'error', msg: 'invalid or missing syncId' });
   if (!d.codename || CODENAMES.indexOf(d.codename) === -1) {
     return out({ status: 'error', msg: 'invalid or missing codename' });
   }
@@ -391,9 +584,37 @@ function handleSubmit_(d) {
     if (h === 'ocr_data_json') return '';
     return '';
   });
-  sh.appendRow(row);
+  // Every cell, not just the ones a phone typed: submitted_by is read back
+  // from the Staff sheet, and a value that went in as text comes back out of
+  // Sheets without its apostrophe.
+  sh.appendRow(row.map(sheetSafe_));
 
   return out({ status: 'ok', syncId: d.syncId, driveUrl: driveUrl });
+}
+
+// The two shapes a syncId has ever had, since the first commit: sync.js mints
+// it — and app.js the artifactId it reuses — as crypto.randomUUID(), or, on a
+// browser without that, String(Date.now()) + Math.random(): digits, usually a
+// fraction, and below 1e-6 an exponent ("…1.5e-7"). A phone's offline queue
+// can hold either, and sync.js keeps whatever the server refuses, so both
+// must pass; nothing else came from the app. A refused syncId is never
+// stored, so it reaches neither a cell nor a Drive file name.
+// test/verify-submit-input.cjs runs the real sync.js to check both shapes.
+const SYNC_ID_SHAPE = /^(?:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|\d+(?:\.\d+)?(?:e-\d+)?)$/i;
+function isAppSyncId_(syncId) {
+  return typeof syncId === 'string' && syncId.length <= 64 && SYNC_ID_SHAPE.test(syncId);
+}
+
+// A string written to a cell that starts with = + - @ is stored by Sheets as
+// a live formula, and runs when someone opens the sheet — =HYPERLINK(...) or
+// =IMPORTXML(...) in a ward name could send the sheet's contents elsewhere
+// the moment Praew looks at it. A leading apostrophe makes Sheets store the
+// value as text; the apostrophe is not part of the stored value, so it reads
+// back (getValues, the dashboard) exactly as sent. Tab and CR cover CSV
+// exports opened in Excel. NeoFeed's _sheetSafe.
+function sheetSafe_(val) {
+  const s = String(val == null ? '' : val);
+  return /^[=+\-@\t\r]/.test(s) ? "'" + s : s;
 }
 
 /********************

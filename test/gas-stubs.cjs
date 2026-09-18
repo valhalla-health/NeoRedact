@@ -1,20 +1,32 @@
 // gas-stubs.cjs — an Apps Script double for the backend harnesses.
-// Not a harness itself: run backend/test/verify-*.cjs.
+// Not a harness itself: run test/verify-*.cjs.
 //
 // Loads the REAL backend/Code.gs into a Node vm and gives it just enough of
 // Apps Script to run the login / submit / dashboard paths:
 //   • Sheets: appendRow, getDataRange, getRange().getValues()/setValues(),
 //     getLastRow() = last row WITH content — so "was a Staff row appended?"
-//     is an observable fact, not a stub assertion;
-//   • CacheService: put/get/remove, so a session is real state a later
-//     request has to look up;
+//     is an observable fact, not a stub assertion. Writes behave as Sheets
+//     treats a string: one starting with = + - @ (and not a plain number)
+//     becomes a live FORMULA, recorded in env.injections; a leading apostrophe
+//     forces text and is not part of the stored value, so it reads back
+//     without it. Rows passed to boot() are stored as given, which is how a
+//     test plants what a sheet would hand back;
+//   • CacheService / PropertiesService: real state a later request has to
+//     look up (sessions, lockout counters);
+//   • LockService: a script lock that can be told to time out
+//     (env.lockTimeout), counting waits and releases, so a test can see what
+//     the lock was held around;
 //   • UrlFetchApp: scripted per test (this is what token verification uses),
 //     recording every call so a test can prove the network check happened
 //     rather than trusting that it did;
-//   • Utilities: real SHA-256/base64 via node:crypto, GAS-style signed bytes.
+//   • Utilities: real SHA-256/HMAC-SHA256/base64 via node:crypto, GAS-style
+//     signed bytes. Every hash call is counted and its input passed to
+//     env.onHash, so a test can see how much hashing a request did and fire
+//     an overlapping request from inside it.
 //
-// The source under test is ../Code.gs, or the file named by NEOREDACT_GAS_SRC
-// (used to run a harness against an older revision to prove it fails there).
+// The source under test is ../backend/Code.gs, or the file named by
+// NEOREDACT_GAS_SRC (used to run a harness against an older revision to prove
+// it fails there).
 'use strict';
 
 const fs = require('fs');
@@ -30,8 +42,21 @@ const SUBMISSION_HEADER = [
   'ward', 'fields_json', 'drive_file_url', 'ocr_status', 'ocr_data_json',
 ];
 
-function makeSheet(name, rows) {
+// A plain number is stored as a number whatever its sign, so "-5" is data;
+// "-A1", "+SUM(…)", "=…" and "@…" are formulas.
+const PLAIN_NUMBER = /^[+-]?\d+(\.\d+)?$/;
+
+function makeSheet(name, rows, env) {
   const data = (rows || []).map((r) => r.slice());
+  // What Sheets makes of one value written to a cell. rowIdx/colIdx are 0-based.
+  function store(v, rowIdx, colIdx) {
+    if (typeof v !== 'string') return v;
+    if (v.charAt(0) === "'") return v.slice(1);
+    if (/^[=+\-@]/.test(v) && !PLAIN_NUMBER.test(v)) {
+      env.injections.push({ sheet: name, row: rowIdx + 1, col: colIdx + 1, value: v });
+    }
+    return v;
+  }
   const sh = {
     getName: () => name,
     _data: data,
@@ -42,7 +67,10 @@ function makeSheet(name, rows) {
       return 0;
     },
     getLastRow() { return sh._lastRow(); },
-    appendRow(row) { data.push(row.slice()); },
+    appendRow(row) {
+      const rowIdx = data.length;
+      data.push(row.map((v, j) => store(v, rowIdx, j)));
+    },
     getDataRange() {
       return {
         getValues() {
@@ -82,7 +110,7 @@ function makeSheet(name, rows) {
             line.forEach((v, j) => {
               const colIdx = c - 1 + j;
               while (row.length < colIdx) row.push('');
-              row[colIdx] = v;
+              row[colIdx] = store(v, rowIdx, colIdx);
             });
           });
           return this;
@@ -110,11 +138,19 @@ function boot(opts) {
     cache: new Map(),
     driveFiles: [],
     uuidSeq: 0,
+    injections: [], // cells a write turned into a live formula — see makeSheet
+    lockTimeout: false, // true: every waitLock() times out, as under contention
+    lockWaits: 0,
+    lockHeld: 0,
+    lockReleases: 0,
+    hmacCalls: 0,
+    digestCalls: 0,
+    onHash: null, // (input) => void, called before every hash is computed
   };
 
   const sheets = {
-    Staff: makeSheet('Staff', [STAFF_HEADER].concat(opts.staff || [])),
-    Submissions: makeSheet('Submissions', [SUBMISSION_HEADER].concat(opts.submissions || [])),
+    Staff: makeSheet('Staff', [STAFF_HEADER].concat(opts.staff || []), env),
+    Submissions: makeSheet('Submissions', [SUBMISSION_HEADER].concat(opts.submissions || []), env),
   };
   env.sheets = sheets;
 
@@ -125,7 +161,7 @@ function boot(opts) {
     getId: () => 'sheet-under-test',
     getUrl: () => 'https://docs.google.com/spreadsheets/d/sheet-under-test',
     getSheetByName: (n) => sheets[n] || null,
-    insertSheet: (n) => { sheets[n] = makeSheet(n, []); return sheets[n]; },
+    insertSheet: (n) => { sheets[n] = makeSheet(n, [], env); return sheets[n]; },
     getSheets: () => Object.values(sheets),
     deleteSheet: () => {},
   };
@@ -167,6 +203,27 @@ function boot(opts) {
       }),
     },
 
+    LockService: {
+      getScriptLock: () => ({
+        waitLock: () => {
+          env.lockWaits++;
+          if (env.lockTimeout) throw new Error('Lock timeout: another process was holding the lock for too long.');
+          env.lockHeld++;
+        },
+        tryLock: () => {
+          env.lockWaits++;
+          if (env.lockTimeout) return false;
+          env.lockHeld++;
+          return true;
+        },
+        hasLock: () => env.lockHeld > 0,
+        releaseLock: () => {
+          env.lockReleases++;
+          if (env.lockHeld > 0) env.lockHeld--;
+        },
+      }),
+    },
+
     SpreadsheetApp: {
       openById: () => spreadsheet,
       create: () => spreadsheet,
@@ -197,10 +254,19 @@ function boot(opts) {
         getBytes: () => bytes,
       }),
       computeDigest: (_alg, value) => {
+        env.digestCalls++;
+        if (env.onHash) env.onHash(String(value));
         const h = crypto.createHash('sha256').update(String(value), 'utf8').digest();
         return Array.from(h).map((b) => (b > 127 ? b - 256 : b));
       },
+      computeHmacSha256Signature: (value, key) => {
+        env.hmacCalls++;
+        if (env.onHash) env.onHash(String(value));
+        const h = crypto.createHmac('sha256', Buffer.from(String(key), 'utf8')).update(String(value), 'utf8').digest();
+        return Array.from(h).map((b) => (b > 127 ? b - 256 : b));
+      },
       DigestAlgorithm: { SHA_256: 'SHA_256' },
+      Charset: { UTF_8: 'UTF_8', US_ASCII: 'US_ASCII' },
       formatDate: (d, _tz, fmt) => {
         const iso = new Date(d).toISOString();
         if (fmt === 'yyyy-MM-dd') return iso.slice(0, 10);
@@ -237,7 +303,12 @@ function boot(opts) {
 
   // Calls the real doPost the way the web app does, and parses its JSON reply.
   function post(body) {
-    ctx.__body = JSON.stringify(body);
+    return postRaw(JSON.stringify(body));
+  }
+  // The same, with the request body exactly as given — for bodies no client
+  // would build, like one that isn't JSON at all.
+  function postRaw(contents) {
+    ctx.__body = contents;
     const out = vm.runInContext('doPost({ postData: { contents: __body } })', ctx);
     return JSON.parse(out.getContent());
   }
@@ -246,6 +317,7 @@ function boot(opts) {
     env,
     ctx,
     post,
+    postRaw,
     staffRows: () => sheets.Staff.getDataRange().getValues().slice(1),
     submissionRows: () => sheets.Submissions.getDataRange().getValues().slice(1),
     tokenInfoCalls: () => env.urlFetchCalls.filter((c) => /tokeninfo/.test(c.url)),
@@ -259,4 +331,16 @@ function unsignedToken(payload) {
   return b64({ alg: 'RS256', typ: 'JWT' }) + '.' + b64(payload) + '.' + 'not-a-real-signature';
 }
 
-module.exports = { boot, unsignedToken, STAFF_HEADER, SUBMISSION_HEADER, SRC_PATH };
+// Runs fn with Date.now() pinned to `ms`. The sandbox shares this realm's Date,
+// so this is the clock the backend reads too.
+function withNow(ms, fn) {
+  const real = Date.now;
+  Date.now = () => ms;
+  try {
+    return fn();
+  } finally {
+    Date.now = real;
+  }
+}
+
+module.exports = { boot, unsignedToken, withNow, STAFF_HEADER, SUBMISSION_HEADER, SRC_PATH };

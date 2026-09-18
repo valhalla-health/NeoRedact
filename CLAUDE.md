@@ -559,8 +559,13 @@ Sync.
 - **What gets sent**: the already-redacted canvas (JPEG, base64) + the reviewed,
   manually-typed field labels/text from the Review step (minus anything HN/DOB/name-labeled
   — see "Codename identity model") + the selected codename + a client-generated `syncId`
-  (UUID) + the session token. Nothing upstream of the redact step is ever touched by either
-  module.
+  + the session token. Nothing upstream of the redact step is ever touched by either
+  module. The `syncId` is `crypto.randomUUID()`, or `String(Date.now()) + Math.random()` on a
+  browser without it (`app.js`'s `artifactId` is minted the same way), and since 2026-09-18
+  the backend refuses any other shape. **Changing how either file mints it is a backend
+  change too, in the same commit** — like the codename list, a shape the backend doesn't
+  know is refused, and `sync.js` keeps a refused photo queued on the phone for good.
+  `test/verify-submit-input.cjs` runs the real `sync.js` to check both shapes.
 - **Offline handling**: `sync.js` keeps a `localStorage` retry queue
   (`neoredact_sync_queue_v1`). A failed POST (no connection, GAS down, expired session)
   queues the payload instead of losing it; the queue flushes automatically on page load and
@@ -581,10 +586,24 @@ Sync.
     missing signature check was "acceptable because every login still goes through the
     `Staff` whitelist server-side". That was wrong on its own terms — the Google path
     *added* any unknown address to `Staff` as an `admin`, so there was no whitelist to pass.
-    The decode also ignored `aud`. NeoFeed had already fixed both on 2026-07-12 (its commit
-    `4e927b9`); NeoRedact was built from an older copy and never received it. NeoRef's
-    backend carries the same warning for the same reason. **Do not go back to decoding the
-    token locally**, and do not re-add auto-registration.
+    The decode also ignored `aud`. NeoFeed had fixed both long before — auto-registration on
+    2026-05-28 (its commit `8d49cd1`), the token check on 2026-07-12 (`4e927b9`); NeoRedact
+    was built from an older copy and never received either. (This line said `4e927b9` fixed
+    both until the follow-up below checked NeoFeed's history.) NeoRef's backend carries the
+    same warning for the same reason. **Do not go back to decoding the token locally**, and
+    do not re-add auto-registration.
+  - **Password path, sheet writes, error text** (follow-up, 2026-09-18 — the rest of what
+    NeoFeed's `4e927b9` and `8ca0f74` had and this copy lacked): five wrong passwords lock an
+    address for 15 minutes, each attempt counted under a short script lock *before* its
+    password is hashed; an address with no password behind it (unknown, Google-only,
+    deactivated) gets the same answer after the same hashing, so the endpoint can't sort
+    staff from strangers; passwords are stored as 3000-round HMAC-SHA256 (`v2$…`), and a row
+    still on the old one-round SHA-256 is re-stored on its owner's next login; hashes are
+    compared in constant time. Every cell a submission writes goes through `sheetSafe_`, so
+    a value starting with `= + - @` is stored as text instead of a formula that runs when
+    the sheet is opened. `doPost` never returns an exception's text — it logs it (Apps
+    Script → Executions) and answers with one generic message. `test/verify-auth.cjs` and
+    `test/verify-submit-input.cjs` pin all of it.
 - **Phase 2 placeholder**: the Sheet has `ocr_status` / `ocr_data_json` columns reserved for
   a future Claude-vision pass over the handwritten fields — not built, gated on hospital
   approval. Nothing in this app or the backend calls any AI API today. This server-side,

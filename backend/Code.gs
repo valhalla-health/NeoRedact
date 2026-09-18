@@ -7,10 +7,18 @@
  * Auth: Google Sign-In (JWT) for nurses with a Google account, or
  * email+password for everyone else — both funnel into the same
  * CacheService session token, so the submit path only ever checks
- * one thing regardless of how the nurse logged in. Reuses the JWT
- * decode logic proven in NeoFeed/gas-backend.gs; the password path
- * is new here (NeoFeed doesn't actually have one despite older notes
- * suggesting it did).
+ * one thing regardless of how the nurse logged in. The Google token
+ * is verified with Google (see verifyGoogleIdToken_); the password
+ * path is new here (NeoFeed doesn't actually have one despite older
+ * notes suggesting it did).
+ *
+ * This file was originally copied from a mid-2026 revision of
+ * NeoFeed/gas-backend.gs and inherited two holes NeoFeed had already
+ * closed on 2026-07-12 (its commit 4e927b9): the Google token was
+ * only base64-decoded, never verified, and an unknown address was
+ * auto-registered as an admin. Both are fixed here (2026-09-18) and
+ * pinned by backend/test/verify-auth.cjs. If you ever port code
+ * between these two backends again, port the tests with it.
  *
  * Phase 2 (Claude-vision OCR of the handwritten fields) is a
  * placeholder column here (ocr_status / ocr_data_json) — nothing
@@ -28,6 +36,23 @@ const SHEET_NAME = 'Submissions';
 const STAFF_SHEET_NAME = 'Staff';
 const DRIVE_ROOT_NAME = 'NeoRedact Submissions';
 const SESSION_TTL_SECONDS = 21600; // 6h — documented practical ceiling for CacheService
+
+// The Google OAuth client NeoRedact's sign-in button uses. Every ID token we
+// accept must carry exactly this `aud`, otherwise a token minted for some
+// other app (any Google account, any site) could be replayed here.
+//
+// THIS IS A FOURTH DUPLICATED CONSTANT, like CODENAMES below: it must equal
+// NEOREDACT_CLIENT_ID in ../index.html and ../dashboard.html. Change all three
+// in the same commit — a mismatch refuses every genuine nurse login. It is not
+// a secret (it ships in the public HTML); it lives here so deploying the
+// backend needs no extra console step to remember.
+// backend/test/verify-auth.cjs fails if the three ever drift apart.
+const GOOGLE_CLIENT_ID = '211053989021-q9r94sd06o33d96k07svus9b688go7lv.apps.googleusercontent.com';
+
+// Roles the Staff sheet may grant. Anything else (blank, a typo, something
+// invented) is treated as the least privilege we have, never as admin.
+const ADMIN_ROLE = 'admin';
+const DEFAULT_ROLE = 'nurse';
 
 // Column order = Sheet column order. Keep in sync with sync.js's payload shape.
 // No HN/DOB/name column here by design — the cloud side is only ever supposed
@@ -111,9 +136,24 @@ function handleLogin_(d) {
   let user = null;
 
   if (d.googleToken) {
-    const email = decodeJwtEmail(d.googleToken);
-    if (!email) return out({ status: 'error', msg: 'invalid Google token' });
-    user = lookupOrBootstrapStaff_(email);
+    const verified = verifyGoogleIdToken_(d.googleToken);
+    if (!verified.email) {
+      // Google being unreachable is not the nurse's account being wrong —
+      // telling her to check her account would send her chasing nothing.
+      if (verified.unavailable) {
+        return out({ status: 'error', msg: 'ตรวจสอบบัญชี Google ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง', retryable: true });
+      }
+      Logger.log('Google sign-in refused: ' + verified.reason);
+      return out({ status: 'error', msg: 'ข้อมูลเข้าสู่ระบบ Google ไม่ถูกต้อง' });
+    }
+    user = lookupActiveStaff_(verified.email);
+    // An address Google vouches for but the Staff sheet doesn't know is a
+    // stranger, not a new colleague. Signing in never creates an account —
+    // Praew adds the row first (see backend/README.md, "Adding a nurse").
+    if (!user) {
+      Logger.log('Google sign-in refused: no active Staff row for ' + verified.email);
+      return out({ status: 'error', msg: 'บัญชีนี้ยังไม่มีสิทธิ์ใช้งาน — แจ้งผู้ดูแลระบบให้เพิ่มอีเมลนี้ก่อน' });
+    }
   } else if (d.email && d.password) {
     user = verifyPassword_(d.email, d.password);
   }
@@ -124,21 +164,33 @@ function handleLogin_(d) {
   return out({ status: 'ok', token: token, name: user.name, role: user.role, email: user.email });
 }
 
-// Google path: auto-register a first-time verified Google user as admin
-// (same convenience NeoFeed uses) — restrict later by setting active=FALSE.
-function lookupOrBootstrapStaff_(email) {
+// The Staff sheet is the whitelist, and the only thing that grants a role.
+// Returns null for an unknown address or one whose row is not active — the
+// caller must not tell those two apart to the client.
+function lookupActiveStaff_(email) {
   const sh = getSheetStaff_();
   const rows = sh.getDataRange().getValues();
+  const wanted = String(email || '').trim().toLowerCase();
+  if (!wanted) return null;
   for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim().toLowerCase() === email.trim().toLowerCase()) {
+    if (String(rows[i][0]).trim().toLowerCase() === wanted) {
       const active = rows[i][3];
       if (active !== true && String(active).toUpperCase() !== 'TRUE') return null;
-      return { email: email, role: String(rows[i][1] || 'nurse'), name: String(rows[i][2] || email) };
+      return {
+        email: String(rows[i][0]).trim(),
+        role: normalizeRole_(rows[i][1]),
+        name: String(rows[i][2] || rows[i][0]),
+      };
     }
   }
-  const name = email.split('@')[0];
-  sh.appendRow([email, 'admin', name, true, '', '']);
-  return { email: email, role: 'admin', name: name };
+  return null;
+}
+
+// 'Admin' typed by hand in the sheet means admin; anything unrecognized means
+// the least privilege, never more than was intended.
+function normalizeRole_(raw) {
+  const role = String(raw || '').trim().toLowerCase();
+  return role === ADMIN_ROLE ? ADMIN_ROLE : DEFAULT_ROLE;
 }
 
 // Password path: requires a pre-existing row with a hash already set via
@@ -155,10 +207,31 @@ function verifyPassword_(email, password) {
       const salt = String(rows[i][5] || '');
       if (!storedHash || !salt) return null; // setInitialPassword() never run for this nurse
       if (hashPwd(password, salt) !== storedHash) return null;
-      return { email: email, role: String(rows[i][1] || 'nurse'), name: String(rows[i][2] || email) };
+      return { email: email, role: normalizeRole_(rows[i][1]), name: String(rows[i][2] || email) };
     }
   }
   return null;
+}
+
+// Run manually from the Apps Script editor to put someone on the Staff sheet.
+// This is the only way an account is created now: signing in never makes one,
+// which is what stops a stranger's Google address from becoming an admin.
+// Use it for the first admin on a fresh deployment, and for Google-account
+// nurses (they need no password — they sign in with Google against this row).
+// Editing the sheet by hand does exactly the same thing.
+function addStaff(email, role, name) {
+  const address = String(email || '').trim();
+  if (!address) throw new Error('addStaff(email, role, name): email is required');
+  const wanted = normalizeRole_(role);
+  const sh = getSheetStaff_();
+  const rows = sh.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]).trim().toLowerCase() === address.toLowerCase()) {
+      throw new Error(address + ' is already on the Staff sheet (row ' + (i + 1) + ') — edit that row instead.');
+    }
+  }
+  sh.appendRow([address, wanted, String(name || address.split('@')[0]), true, '', '']);
+  Logger.log('Staff row added: ' + address + ' as ' + wanted);
 }
 
 // One-time, run manually from the Apps Script editor per non-Google nurse.
@@ -179,23 +252,64 @@ function setInitialPassword(email, password) {
 }
 
 /********************
- * JWT decode — base64url payload decode, no network call. Does NOT verify
- * the cryptographic signature (acceptable here since every login still goes
- * through the staff whitelist below). Checks issuer, expiry, email_verified.
- * Reused verbatim from NeoFeed/gas-backend.gs.
+ * Google ID token verification.
+ *
+ * This used to be decodeJwtEmail(): it base64-decoded the JWT's middle
+ * segment and read the claims out of it. Every claim it checked (iss, exp,
+ * email, email_verified) is a claim the sender writes, and the signature —
+ * the only part that proves Google wrote them — was never looked at. The
+ * comment here used to call that acceptable "since every login still goes
+ * through the staff whitelist"; it wasn't, because the whitelist lookup
+ * below used to add any unknown address as an admin, and even with that
+ * fixed, unverified claims would still let a stranger arrive as any nurse
+ * already on the sheet.
+ *
+ * Apps Script has no RSA/JWKS verification, so — like NeoFeed, PSS:NICU and
+ * EOS Smart Alert already do — signature and expiry are delegated to
+ * Google's tokeninfo endpoint (Google's documented server-side fallback for
+ * environments without a JWT library), and `aud` is checked here so a token
+ * minted for a different Google OAuth client cannot be replayed at this app.
+ *
+ * Needs the script.external_request scope in appsscript.json. Without it
+ * UrlFetchApp throws and no Google login can succeed.
  ********************/
-function decodeJwtEmail(token) {
+function verifyGoogleIdToken_(idToken) {
+  if (!idToken || typeof idToken !== 'string') return { email: null, reason: 'no token sent' };
+  // A genuine ID token is well under this; the cap keeps a junk payload out
+  // of the request URL below.
+  if (idToken.length > 4096) return { email: null, reason: 'token too long' };
   try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    while (b64.length % 4) b64 += '=';
-    const payload = JSON.parse(Utilities.newBlob(Utilities.base64Decode(b64)).getDataAsString());
-    if (payload.iss !== 'https://accounts.google.com' && payload.iss !== 'accounts.google.com') return null;
-    if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return null;
-    if (!payload.email || payload.email_verified !== true) return null;
-    return payload.email;
-  } catch (e) { return null; }
+    const resp = UrlFetchApp.fetch(
+      'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken),
+      { muteHttpExceptions: true }
+    );
+    const code = resp.getResponseCode();
+    // Google's own bad day is not a bad token — see handleLogin_.
+    if (code >= 500) return { email: null, reason: 'tokeninfo HTTP ' + code, unavailable: true };
+    if (code !== 200) return { email: null, reason: 'tokeninfo HTTP ' + code };
+    let payload;
+    try { payload = JSON.parse(resp.getContentText()); }
+    catch (parseErr) { return { email: null, reason: 'tokeninfo body is not JSON', unavailable: true }; }
+    if (!payload) return { email: null, reason: 'empty tokeninfo body' };
+    if (payload.aud !== GOOGLE_CLIENT_ID) return { email: null, reason: 'aud is not this app' };
+    if (payload.iss !== 'https://accounts.google.com' && payload.iss !== 'accounts.google.com') {
+      return { email: null, reason: 'bad iss' };
+    }
+    // tokeninfo returns these as strings; a genuine token that has expired is
+    // rejected by Google above, this is belt and braces.
+    if (!payload.exp || Number(payload.exp) < Math.floor(Date.now() / 1000)) {
+      return { email: null, reason: 'token expired' };
+    }
+    if (payload.email_verified !== true && payload.email_verified !== 'true') {
+      return { email: null, reason: 'email not verified' };
+    }
+    if (!payload.email) return { email: null, reason: 'no email in token' };
+    return { email: String(payload.email), reason: null };
+  } catch (e) {
+    // Includes the missing-scope case: nothing here can tell a network blip
+    // from an unauthorized UrlFetchApp, so say "try again" and log the detail.
+    return { email: null, reason: 'tokeninfo call failed: ' + e.message, unavailable: true };
+  }
 }
 
 /********************
@@ -218,11 +332,31 @@ function verifySession(token) {
   try { return JSON.parse(raw); } catch (e) { return null; }
 }
 
+// Every authenticated request re-reads the Staff sheet instead of trusting the
+// name and role frozen into the session at login. Two reasons:
+//   • revocation is immediate — setting active=FALSE, or changing a role, takes
+//     effect on the next request instead of up to SESSION_TTL_SECONDS later.
+//     That matters most right after a clean-up: a session issued before the row
+//     was corrected would otherwise keep whatever it was granted for 6h;
+//   • the role that decides who reads the dashboard comes from the sheet Praew
+//     edits, which is the thing she can actually inspect and audit.
+// Costs one read of a small sheet per request, on a path that already opens the
+// spreadsheet anyway.
+function requireStaffSession_(token) {
+  const sess = verifySession(token);
+  if (!sess || !sess.email) return null;
+  return lookupActiveStaff_(sess.email);
+}
+
 /********************
  * Submission (the original doPost body, now behind a session check)
  ********************/
 function handleSubmit_(d) {
-  const user = verifySession(d.token);
+  // Keep the words "not authenticated" for every unusable-session case,
+  // including a row that has just been deactivated: sync.js matches on them to
+  // clear the stale session and re-prompt login, instead of dropping a photo
+  // the nurse has already taken.
+  const user = requireStaffSession_(d.token);
   if (!user) return out({ status: 'error', msg: 'not authenticated' });
 
   if (!d.syncId) return out({ status: 'error', msg: 'syncId required' });
@@ -263,13 +397,25 @@ function handleSubmit_(d) {
 }
 
 /********************
- * Dashboard (read-only) — groups submissions by codename for the staff-facing
+ * Dashboard (read-only) — groups submissions by codename for the admin
  * dashboard page. Never returns anything beyond what's already in the Sheet
  * (codename, not real identity).
+ *
+ * ADMIN ONLY. This is the one endpoint that returns the whole collection in
+ * one response: every submitting nurse's email address, every ward, and a
+ * Drive link per redacted photo. A nurse needs none of that to do her own job
+ * — she submits, she never reads back — so any session used to be enough to
+ * pull the lot, which is what made it worth taking. If ward staff ever do need
+ * a view, give them one scoped to their own submissions rather than widening
+ * this one.
  ********************/
 function handleListDashboard_(d) {
-  const user = verifySession(d.token);
+  const user = requireStaffSession_(d.token);
   if (!user) return out({ status: 'error', msg: 'not authenticated' });
+  if (user.role !== ADMIN_ROLE) {
+    Logger.log('Dashboard refused for non-admin: ' + user.email);
+    return out({ status: 'error', msg: 'เฉพาะผู้ดูแลระบบเท่านั้นที่เปิดหน้ารวมข้อมูลได้' });
+  }
 
   const sh = getSheet_();
   const lastRow = sh.getLastRow();
@@ -338,7 +484,7 @@ function setupSpreadsheet() {
   getDriveRootFolder_(); // creates + stores DRIVE_ROOT_ID if missing
 
   Logger.log('Spreadsheet ready: ' + ss.getUrl());
-  Logger.log('Add yourself to the Staff sheet (or sign in with Google once to auto-bootstrap as admin), set passwords for non-Google nurses with setInitialPassword(), then Deploy.');
+  Logger.log('Add yourself with addStaff("you@example.com", "admin", "Your Name") — signing in no longer creates an account. Set passwords for non-Google nurses with setInitialPassword(), then Deploy.');
   return ss.getUrl();
 }
 

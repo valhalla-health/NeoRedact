@@ -1,0 +1,25 @@
+# Runs the harnesses in test/. A push to main is a release for the frontend
+# (GitHub Pages), and the backend's auth contract is the kind of thing that
+# was previously only checked by reading the code — which is how NeoRedact
+# kept a copy of NeoFeed's pre-2026-07-12 auth bugs for two months.
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  harnesses:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node test/verify-auth.cjs
+      - run: node test/verify-dashboard-escaping.cjs

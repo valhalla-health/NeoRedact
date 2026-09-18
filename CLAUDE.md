@@ -78,8 +78,10 @@ reused codename on her side, this app never tracks that.
 - **Drive layout**: `NeoRedact Submissions/<codename>/<yyyy-MM-dd>/<syncId>.jpg` — one
   folder per codename, dated subfolder inside. (Changed from the old flat
   `<yyyy-MM-dd>/<syncId>.jpg` layout — old files aren't migrated.)
-- **Dashboard** (`dashboard.html` + `dashboard.js`): read-only, staff-login-gated (reuses
-  `auth.js`), lists submissions grouped by codename with date/ward/fields/photo link.
+- **Dashboard** (`dashboard.html` + `dashboard.js`): read-only and **admin-only** (reuses
+  `auth.js`), lists submissions grouped by codename with date/ward/fields/photo link. It
+  returns every submitting nurse's address in one response, which is why it is not open to
+  any logged-in session; cells are built with `textContent`, never as HTML (see "Auth").
   Calls a new `list_dashboard` action on the same GAS backend. No patient-management
   (create/rename/discharge) — v1 is intentionally just a viewer.
 - **Local export (`export.js`) is PNG-only** (the redacted photo) and carries the codename
@@ -568,10 +570,21 @@ Sync.
   dropping the data — `sync.js` responds by clearing the stale session so the export step
   naturally prompts a fresh login next time, instead of retrying with a token that will
   never work again.
-- **Auth caveat**: the JWT decode in `backend/Code.gs` does not verify Google's
-  cryptographic signature (checks issuer/expiry/`email_verified` only) — acceptable because
-  every login still goes through the `Staff` whitelist server-side, same tradeoff NeoFeed
-  ships with. See `backend/README.md`'s Security section for the rest.
+- **Auth** (rewritten 2026-09-18): `backend/Code.gs` verifies a Google ID token with
+  Google's `tokeninfo` endpoint and requires `aud` to be NeoRedact's own OAuth client, and
+  an address must already have an active row on the `Staff` sheet — signing in never
+  creates one. Both the role and the active flag are re-read from that sheet on every
+  request, so deactivating or demoting someone takes effect immediately rather than after
+  the 6h session TTL. The dashboard is **admin-only**. `test/verify-auth.cjs` pins all of
+  this; run it before touching the login, submit or dashboard paths.
+  - **What this replaced, so nobody reintroduces it**: until 2026-09-18 this file said the
+    missing signature check was "acceptable because every login still goes through the
+    `Staff` whitelist server-side". That was wrong on its own terms — the Google path
+    *added* any unknown address to `Staff` as an `admin`, so there was no whitelist to pass.
+    The decode also ignored `aud`. NeoFeed had already fixed both on 2026-07-12 (its commit
+    `4e927b9`); NeoRedact was built from an older copy and never received it. NeoRef's
+    backend carries the same warning for the same reason. **Do not go back to decoding the
+    token locally**, and do not re-add auto-registration.
 - **Phase 2 placeholder**: the Sheet has `ocr_status` / `ocr_data_json` columns reserved for
   a future Claude-vision pass over the handwritten fields — not built, gated on hospital
   approval. Nothing in this app or the backend calls any AI API today. This server-side,

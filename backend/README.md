@@ -37,8 +37,8 @@ Google Sheets + Drive, no separate server.
 5. This script saves the photo to Drive (`<codename>/<yyyy-MM-dd>/`) and logs
    one row per submission in the `Submissions` sheet, tagged with which nurse
    submitted it.
-6. A read-only dashboard (`dashboard.html`, staff-login-gated) lists
-   submissions grouped by codename via the `list_dashboard` action.
+6. A read-only dashboard (`dashboard.html`, **admin-only** since 2026-09-18)
+   lists submissions grouped by codename via the `list_dashboard` action.
 
 **Phase 2 is not built yet.** `ocr_status` / `ocr_data_json` are placeholder
 columns for a future pass that would send the (already-redacted) photo to
@@ -52,16 +52,38 @@ Per-nurse login, not a shared secret — this project is meant to be public on
 GitHub, so a hardcoded token in the client wouldn't hold up. Two paths, both
 end up producing the same `CacheService` session token (6h TTL):
 
-- **Google Sign-In** — nurse's Google JWT is decoded locally (`decodeJwtEmail`,
-  no signature verification, but every login still goes through the `Staff`
-  whitelist below). First-time verified Google users are auto-registered as
-  `admin` in `Staff` — restrict later by setting `active=FALSE`.
+- **Google Sign-In** — the ID token is verified with Google's `tokeninfo`
+  endpoint (`verifyGoogleIdToken_`), which is what checks the signature and
+  expiry; `aud` must equal `GOOGLE_CLIENT_ID`, so a token minted for a
+  different Google OAuth client can't be replayed here. The address must
+  then already have an active `Staff` row.
 - **Email + password** — for nurses without a Google account. Requires you to
   run `setInitialPassword(email, password)` once per nurse from the Apps
   Script editor first; there's no self-registration for this path.
 
+**Neither path creates an account.** Signing in only ever *looks up* a row.
+
 `Staff` sheet columns: `email | role | name | active | password_hash | salt`.
 Google-account rows can leave `password_hash`/`salt` blank.
+`role` is `admin` or `nurse`; anything unrecognized is treated as `nurse`.
+
+### Adding a nurse
+
+From the Apps Script editor (or by typing the row into the sheet by hand):
+
+```js
+addStaff("nurse@example.com", "nurse", "Her Name")   // Google sign-in
+setInitialPassword("nurse@example.com", "a-password") // no Google account
+```
+
+Only give `admin` to someone who should read the whole dashboard — every
+submitting nurse's address, ward and photo link.
+
+### Turning someone off
+
+Set `active` to `FALSE` (or fix the `role`) in the `Staff` sheet. Both are
+re-read on every request, so it takes effect on her next action rather than
+whenever her 6h session happens to expire.
 
 ## Data dictionary (`Submissions` sheet)
 
@@ -106,22 +128,33 @@ one spare, deleting the other. Old Drive files under the flat
    lives here with `rootDir: ""`, so the repo root above is not uploaded)
 4. Open in Apps Script editor → run `setupSpreadsheet()` once (creates the
    `Submissions` + `Staff` sheets + the `NeoRedact Submissions` Drive folder)
-5. Sign in to NeoRedact with your own Google account once — this
-   auto-registers you as `admin` in the `Staff` sheet. Add other nurses'
-   emails as rows (Google-account nurses: leave `password_hash`/`salt`
-   blank; they self-register the same way on first login). For non-Google
-   nurses, run `setInitialPassword("their@email.com", "some-password")` from
-   the Apps Script editor once each.
-6. Deploy → **Manage deployments** → edit the existing deployment → Version:
+5. Add yourself as the first admin from the editor:
+   `addStaff("you@example.com", "admin", "Your Name")`. Signing in does **not**
+   create an account (see Auth above), so this step can't be skipped. Add each
+   Google-account nurse the same way with `"nurse"`; for non-Google nurses run
+   `setInitialPassword("their@email.com", "some-password")` once each.
+6. **Run any function once from the editor and accept the permission prompt.**
+   Since 2026-09-18 `appsscript.json` also requests
+   `script.external_request`, which is what lets the backend call Google to
+   verify a sign-in token. Adding a scope invalidates the existing
+   authorization: until the deploying account grants it, every Google login
+   fails. `addStaff(...)` in step 5 is a fine way to trigger it.
+7. Deploy → **Manage deployments** → edit the existing deployment → Version:
    **New** → Deploy (use this, not "New deployment", once a deployment
    already exists — that would mint a different `/exec` URL and break every
    already-configured client)
-7. Set `NEOREDACT_CLIENT_ID` in NeoRedact's `index.html` config block to a
+8. Sign in once through the app and confirm it works, then open
+   `dashboard.html` and confirm it loads for you and not for a nurse account.
+9. Set `NEOREDACT_CLIENT_ID` in NeoRedact's `index.html` config block to a
    Google OAuth Client ID (try reusing NeoFeed's existing one first — Google
    validates by authorized JavaScript **origin**, not path, so if NeoRedact
    is hosted under the same origin it may just work; otherwise create a new
    OAuth Client ID in Google Cloud Console → Credentials, with NeoRedact's
-   hosted origin added to "Authorized JavaScript origins")
+   hosted origin added to "Authorized JavaScript origins"). **The same value
+   must be set in three places** — `index.html`, `dashboard.html` and
+   `GOOGLE_CLIENT_ID` in `Code.gs` — because the backend now checks the
+   token's `aud` against it. Change all three in the same commit;
+   `test/verify-auth.cjs` fails if they drift apart.
 
 ## Daily workflow
 
@@ -154,7 +187,24 @@ clasp push
   core EMR) is new enough that it should have hospital IT/legal/DPO sign-off
   before real patients' data flows through it in production, independent of
   anything built here.
-- The JWT decode does not verify Google's cryptographic signature — an
-  acceptable tradeoff for an internal tool gated by the `Staff` whitelist,
-  same as NeoFeed, but not a substitute for genuine token verification if
-  this were ever exposed more broadly.
+- **Fixed 2026-09-18 — do not reintroduce.** This backend was copied from a
+  mid-2026 NeoFeed revision and inherited two faults NeoFeed had already
+  fixed on 2026-07-12 (its commit `4e927b9`), which this README used to
+  describe as an acceptable tradeoff:
+  1. the Google ID token was only base64-decoded. Every claim it checked
+     (`iss`, `exp`, `email`, `email_verified`) is written by whoever sends
+     the token, and the signature — the only part that proves Google wrote
+     them — was never examined. `aud` wasn't checked either;
+  2. an address with no `Staff` row was appended as `admin`, active. So the
+     "gated by the `Staff` whitelist" defence above was circular: the gate
+     admitted anyone who knocked, as an administrator.
+  Together these meant the dashboard — every nurse's address, ward and photo
+  link — was reachable without a genuine account. Verification now goes
+  through Google, accounts are never self-created, and the dashboard is
+  admin-only. `test/verify-auth.cjs` fails against the old behaviour.
+- **The `Staff` sheet needs a review after this deploy.** While the above was
+  live, any first Google sign-in wrote an `admin` row, so rows created that
+  way are indistinguishable from intended ones. Read the sheet: anything you
+  don't recognise should be removed or set `active=FALSE`, and colleagues who
+  only submit photos belong on `nurse`, not `admin`. Check the `submitted_by`
+  column of `Submissions` for the same reason.

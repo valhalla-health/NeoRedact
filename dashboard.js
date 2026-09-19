@@ -70,6 +70,27 @@
     return Object.keys(fields || {}).map((k) => `${k}: ${fields[k]}`).join(', ');
   }
 
+  // Every cell below holds text somebody typed on a phone (ward, field labels,
+  // field values) and is read back by the one account allowed to see the whole
+  // collection. Built as an HTML string, a submitted value would run as markup
+  // in the admin's browser — where the admin's session token is — which would
+  // make the backend's admin-only check on list_dashboard pointless. So cells
+  // are built as nodes and filled with textContent, never concatenated into
+  // innerHTML. test/verify-dashboard-escaping.cjs fails if that changes.
+  function appendTextCell(row, text) {
+    const td = document.createElement('td');
+    td.textContent = text == null ? '' : String(text);
+    row.appendChild(td);
+    return td;
+  }
+
+  // drive_file_url is written by the backend from Drive's own getUrl(), but it
+  // still arrives over the network and ends up in an href — so only a real
+  // https Drive link is ever made clickable.
+  function isDriveUrl(url) {
+    return typeof url === 'string' && /^https:\/\/(drive|docs)\.google\.com\//.test(url);
+  }
+
   function renderTable(rows) {
     el.dashTable.innerHTML = '';
     if (!rows.length) {
@@ -97,11 +118,19 @@
       }
       const tr = document.createElement('tr');
       const date = (r.capturedAt || r.submittedAt || '').toString().slice(0, 10);
-      const linkCell = r.driveFileUrl
-        ? `<a href="${r.driveFileUrl}" target="_blank" rel="noopener">เปิดรูป</a>`
-        : '';
-      tr.innerHTML =
-        `<td>${date}</td><td>${r.ward || ''}</td><td>${fieldsToText(r.fields)}</td><td>${linkCell}</td>`;
+      appendTextCell(tr, date);
+      appendTextCell(tr, r.ward || '');
+      appendTextCell(tr, fieldsToText(r.fields));
+      const linkCell = document.createElement('td');
+      if (isDriveUrl(r.driveFileUrl)) {
+        const link = document.createElement('a');
+        link.href = r.driveFileUrl;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = 'เปิดรูป';
+        linkCell.appendChild(link);
+      }
+      tr.appendChild(linkCell);
       tbody.appendChild(tr);
     });
     el.dashTable.appendChild(tbody);

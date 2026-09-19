@@ -17,7 +17,15 @@
 // meant every installed phone kept serving its cached old sync.js and never
 // received the fix. Hence v11. If you ever bump this number, check what is
 // actually deployed first, not just what the last commit says.
-const CACHE_VERSION = 'v11';
+//
+// v12 (2026-09-18): dashboard.js now renders submitted text as text instead of
+// building table rows as HTML (backend auth fix, see backend/Code.gs). The
+// dashboard is not in SHELL_FILES, but the fetch handler below caches every
+// same-origin GET it sees, so a browser that has opened the dashboard holds a
+// copy of the old dashboard.js and would keep serving it. The bump is what
+// drops it: activate deletes every cache that isn't the current version.
+// Checked before bumping, per the note above: the deployed sw.js was v11.
+const CACHE_VERSION = 'v12';
 const SHELL_CACHE = `neoredact-shell-${CACHE_VERSION}`;
 const ALL_CACHES = [SHELL_CACHE];
 
